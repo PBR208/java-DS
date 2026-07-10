@@ -50,7 +50,7 @@ public interface ComparableContent<ContentType> {
    * Returns false when the current object is equal to or less than
    * pContent.
    */
-  public boolean isGreater(ContentType pContent);
+  boolean isGreater(ContentType pContent);
 
   /**
    * Determines whether the current object is considered equal to the
@@ -76,7 +76,7 @@ public interface ComparableContent<ContentType> {
    * implemented ordering definition.
    * Returns false when any ordering difference exists between the objects.
    */
-  public boolean isEqual(ContentType pContent);
+  boolean isEqual(ContentType pContent);
 
   /**
    * Determines whether the current object should be ordered before the
@@ -104,6 +104,6 @@ public interface ComparableContent<ContentType> {
    * Returns false when the current object is equal to or greater than
    * pContent.
    */
-  public boolean isLess(ContentType pContent);
+  boolean isLess(ContentType pContent);
 
 }
