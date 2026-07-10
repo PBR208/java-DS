@@ -1,4 +1,4 @@
-package linear;
+package linear.stack;
 
 /**
  * Generic stack implementation based on the Last-In, First-Out (LIFO)
