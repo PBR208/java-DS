@@ -21,7 +21,7 @@ public class Stack<ContentType> {
   private class StackNode {
 
     private ContentType content = null;
-    private StackNode nextNode = null;
+    private StackNode next = null;
 
     /**
      * Creates a new stack node containing the specified element.
@@ -32,7 +32,7 @@ public class Stack<ContentType> {
      */
     public StackNode(ContentType pContent) {
       content = pContent;
-      nextNode = null;
+      next = null;
     }
 
     /**
@@ -41,7 +41,7 @@ public class Stack<ContentType> {
      * @param pNext the node that follows this node
      */
     public void setNext(StackNode pNext) {
-      nextNode = pNext;
+      next = pNext;
     }
 
     /**
@@ -50,7 +50,7 @@ public class Stack<ContentType> {
      * @return the next StackNode, or null if no successor exists
      */
     public StackNode getNext() {
-      return nextNode;
+      return next;
     }
 
     /**
