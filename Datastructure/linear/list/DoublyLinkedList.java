@@ -1,4 +1,4 @@
-package linear;
+package linear.list;
 
 /**
  * Optimized doubly linked list implementation with a movable cursor.
