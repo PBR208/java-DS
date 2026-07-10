@@ -81,10 +81,10 @@ public class List<ContentType> {
   /* ---------- End of private inner class ---------- */
 
   // Head (first element) of the list
-  ListNode first;
+  ListNode head;
 
   // Tail (last element) of the list
-  ListNode last;
+  ListNode tail;
 
   // Currently active element (cursor)
   ListNode current;
@@ -93,8 +93,8 @@ public class List<ContentType> {
    * Creates an empty list.
    */
   public List() {
-    first = null;
-    last = null;
+    head = null;
+    tail = null;
     current = null;
   }
 
@@ -104,7 +104,7 @@ public class List<ContentType> {
    * @return true if the list contains no elements, otherwise false
    */
   public boolean isEmpty() {
-    return first == null;
+    return head == null;
   }
 
   /**
@@ -133,7 +133,7 @@ public class List<ContentType> {
    */
   public void toFirst() {
     if (!isEmpty()) {
-      current = first;
+      current = head;
     }
   }
 
@@ -142,7 +142,7 @@ public class List<ContentType> {
    */
   public void toLast() {
     if (!isEmpty()) {
-      current = last;
+      current = tail;
     }
   }
 
@@ -191,21 +191,21 @@ public class List<ContentType> {
 
         ListNode newNode = new ListNode(pContent);
 
-        if (current != first) {
+        if (current != head) {
           ListNode previous = this.getPrevious(current);
           newNode.setNextNode(previous.getNextNode());
           previous.setNextNode(newNode);
         } else {
-          newNode.setNextNode(first);
-          first = newNode;
+          newNode.setNextNode(head);
+          head = newNode;
         }
 
       } else {
 
         if (this.isEmpty()) {
           ListNode newNode = new ListNode(pContent);
-          first = newNode;
-          last = newNode;
+          head = newNode;
+          tail = newNode;
         }
       }
     }
@@ -226,8 +226,8 @@ public class List<ContentType> {
       } else {
         ListNode newNode = new ListNode(pContent);
 
-        last.setNextNode(newNode);
-        last = newNode;
+        tail.setNextNode(newNode);
+        tail = newNode;
       }
     }
   }
@@ -244,15 +244,15 @@ public class List<ContentType> {
     if (pList != this && pList != null && !pList.isEmpty()) {
 
       if (this.isEmpty()) {
-        this.first = pList.first;
-        this.last = pList.last;
+        this.head = pList.head;
+        this.tail = pList.tail;
       } else {
-        this.last.setNextNode(pList.first);
-        this.last = pList.last;
+        this.tail.setNextNode(pList.head);
+        this.tail = pList.tail;
       }
 
-      pList.first = null;
-      pList.last = null;
+      pList.head = null;
+      pList.tail = null;
       pList.current = null;
     }
   }
@@ -266,12 +266,12 @@ public class List<ContentType> {
   public void remove() {
     if (this.hasAccess() && !this.isEmpty()) {
 
-      if (current == first) {
-        first = first.getNextNode();
+      if (current == head) {
+        head = head.getNextNode();
       } else {
         ListNode previous = this.getPrevious(current);
-        if (current == last) {
-          last = previous;
+        if (current == tail) {
+          tail = previous;
         }
         previous.setNextNode(current.getNextNode());
       }
@@ -282,7 +282,7 @@ public class List<ContentType> {
       current = temp;
 
       if (this.isEmpty()) {
-        last = null;
+        tail = null;
       }
     }
   }
@@ -294,8 +294,8 @@ public class List<ContentType> {
    * @return previous node or null if not found or not applicable
    */
   private ListNode getPrevious(ListNode pNode) {
-    if (pNode != null && pNode != first && !this.isEmpty()) {
-      ListNode temp = first;
+    if (pNode != null && pNode != head && !this.isEmpty()) {
+      ListNode temp = head;
       while (temp != null && temp.getNextNode() != pNode) {
         temp = temp.getNextNode();
       }
