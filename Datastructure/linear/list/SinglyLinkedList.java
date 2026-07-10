@@ -19,7 +19,7 @@ package linear.list;
  * Conventions:
  * - Parameters prefixed with 'p' denote method input parameters.
  */
-public class List<ContentType> {
+public class SinglyLinkedList<ContentType> {
 
   /* ---------- Start of private inner class ---------- */
 
@@ -92,7 +92,7 @@ public class List<ContentType> {
   /**
    * Creates an empty list.
    */
-  public List() {
+  public SinglyLinkedList() {
     head = null;
     tail = null;
     current = null;
@@ -240,7 +240,7 @@ public class List<ContentType> {
    *
    * @param pList list to append
    */
-  public void concat(List pList) {
+  public void concat(SinglyLinkedList pList) {
     if (pList != this && pList != null && !pList.isEmpty()) {
 
       if (this.isEmpty()) {
