@@ -1,4 +1,4 @@
-package nonLinear.graph;
+package nonLinear.graph.base;
 
 /**
  * Purpose:
