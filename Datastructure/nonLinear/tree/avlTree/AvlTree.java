@@ -1,4 +1,6 @@
-package nonLinear.tree;
+package nonLinear.tree.avlTree;
+
+import nonLinear.tree.base.ComparableContent;
 
 /**
  * Purpose:

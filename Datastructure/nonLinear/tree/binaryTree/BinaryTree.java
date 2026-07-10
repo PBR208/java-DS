@@ -1,4 +1,6 @@
-package nonLinear.tree;
+package nonLinear.tree.binaryTree;
+
+import nonLinear.tree.base.ComparableContent;
 
 /**
  * Purpose:
@@ -60,7 +62,7 @@ package nonLinear.tree;
  * @param <ContentType>
  * The type of content stored at each node of the tree.
  */
-public class BinaryTree<ContentType> {
+public class BinaryTree<ContentType extends ComparableContent<ContentType>> {
 
 	/**
 	 * Purpose:
