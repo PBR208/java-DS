@@ -1,4 +1,4 @@
-package linear;
+package linear.list;
 
 /**
  * Generic singly linked list implementation with a single movable cursor
