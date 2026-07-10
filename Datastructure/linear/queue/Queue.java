@@ -1,4 +1,4 @@
-package linear;
+package linear.queue;
 
 /**
  * Generic FIFO (First-In, First-Out) queue implementation based on a singly
