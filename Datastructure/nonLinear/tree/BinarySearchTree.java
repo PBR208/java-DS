@@ -1,4 +1,4 @@
-package nonlinear.tree;
+package nonLinear.tree;
 
 /**
  * Purpose:
