@@ -171,4 +171,69 @@ public class Deque<ContentType> {
    * bytes for a constant-time size query.
    */
   private int size;
+
+  /**
+   * Creates an empty deque.
+   *
+   * No storage is reserved up front, because a linked representation allocates
+   * per element rather than in blocks; an unused deque therefore costs nothing
+   * beyond the object itself. The deque accepts elements of type ContentType and
+   * imposes no capacity limit other than the available heap.
+   *
+   * Time complexity: O(1) - three field assignments.
+   * Space complexity: O(1) - no element storage is allocated.
+   */
+  public Deque() {
+    // An empty deque has no chain at all, so neither end refers to a node. Both
+    // references must be null together; a state in which only one of them is set
+    // would be inconsistent and is never produced by any operation.
+    head = null;
+    tail = null;
+
+    // No elements are stored yet.
+    size = 0;
+  }
+
+  /**
+   * Checks whether the deque currently holds any elements.
+   *
+   * This is the guard clause callers are expected to use before reading or
+   * removing at either end, because all four of those operations are defined to
+   * fail silently on an empty deque rather than to raise an exception. Emptiness
+   * is a property of the whole structure, not of one end: a deque is either
+   * empty at both ends or at neither.
+   *
+   * Time complexity: O(1) - a single reference comparison.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * True when no element is stored, false as soon as at least one element has
+   * been inserted and not yet removed.
+   */
+  public boolean isEmpty() {
+    // The head reference is null exactly while the chain is empty, which makes it
+    // an equally valid criterion as the size counter; it is preferred here
+    // because it tests the structure itself rather than the bookkeeping.
+    return head == null;
+  }
+
+  /**
+   * Returns the number of elements currently stored in the deque.
+   *
+   * The value is maintained incrementally by the insertion and removal
+   * operations, so obtaining it never walks the chain. This matters for callers
+   * that check the element count inside a loop, for example when a deque is used
+   * as a sliding window and the window width has to be tested on every step.
+   *
+   * Time complexity: O(1) - the count is maintained incrementally rather than
+   * derived by traversal.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * Element count, zero for an empty deque and never negative.
+   */
+  public int size() {
+    // The size counter is the single source of truth for the element count.
+    return size;
+  }
 }
