@@ -593,4 +593,242 @@ public class RedBlackTree<ContentType extends ComparableContent<ContentType>> {
         promoted.right = pPivot;
         pPivot.parent = promoted;
     }
+
+    /**
+     * Inserts the specified content into the tree, maintaining both the binary
+     * search ordering and all five red-black properties.
+     *
+     * Detailed explanation of:
+     * - Purpose: Adds a new value at its correct sorted position and then
+     *   restores the colour invariants, so that the height bound continues to
+     *   hold no matter what order values arrive in.
+     * - Business context: Serves as the primary entry point for growing the
+     *   tree. The guarantee it provides is precisely what an unbalanced binary
+     *   search tree cannot offer: inserting an already-sorted sequence produces
+     *   a tree of logarithmic rather than linear height.
+     * - Processing steps:
+     *   1. Reject null, consistent with the other structures in this library.
+     *   2. Descend from the root comparing the new value against each node,
+     *      remembering the last node visited, until a leaf position is reached.
+     *      Abandon the insertion if an equal value is encountered, since
+     *      duplicates are not stored distinctly.
+     *   3. Link the new node underneath the remembered parent on the side the
+     *      comparison dictates, or install it as the root if the tree was empty.
+     *   4. Colour the new node red and repair.
+     * - Assumptions: Assumes the ordering comparisons form a consistent total
+     *   order over every value ever inserted; an inconsistent ordering places
+     *   values where later searches will not look for them.
+     * - Side effects: Allocates one node, increments the element count, and may
+     *   recolour and rotate nodes along the path back to the root.
+     *
+     * Time complexity: O(log n). The descent is bounded by the height, and the
+     * repair performs at most two rotations plus a recolouring walk that is also
+     * bounded by the height.
+     * Space complexity: O(1); both the descent and the repair are iterative.
+     *
+     * @param pContent
+     * The content value to insert. If null, this method performs no action
+     * rather than raising an exception. If a value comparing equal to one
+     * already stored is supplied, the tree is left completely unchanged,
+     * including its element count.
+     */
+    public void insert(ContentType pContent) {
+        // Ignore null rather than storing an entry that could not participate in
+        // any subsequent ordering comparison.
+        if (pContent == null) {
+            return;
+        }
+
+        // Cursor descending towards the leaf position where the value belongs.
+        RBNode currentNode = root;
+
+        // Trails one level behind the cursor, so that when the cursor falls off a
+        // leaf this still refers to the node the new one must hang from.
+        RBNode parentNode = nil;
+
+        // Locate the insertion point.
+        while (currentNode != nil) {
+            // Remember the current node before descending past it.
+            parentNode = currentNode;
+
+            if (pContent.isLess(currentNode.content)) {
+                currentNode = currentNode.left;
+            } else if (pContent.isGreater(currentNode.content)) {
+                currentNode = currentNode.right;
+            } else {
+                // An equal value is already stored. Duplicates are not inserted
+                // distinctly, so abandon the operation entirely; returning here
+                // rather than falling through is what keeps the element count
+                // truthful.
+                return;
+            }
+        }
+
+        // Create the node and give it the sentinel as both children, which is
+        // this implementation's representation of a leaf.
+        RBNode insertedNode = new RBNode(pContent);
+        insertedNode.left = nil;
+        insertedNode.right = nil;
+        insertedNode.parent = parentNode;
+
+        // Link the new node into the tree on the side the ordering dictates.
+        if (parentNode == nil) {
+            // The tree was empty, so the new node becomes the root. The repair
+            // below is responsible for colouring it black.
+            root = insertedNode;
+        } else if (pContent.isLess(parentNode.content)) {
+            parentNode.left = insertedNode;
+        } else {
+            parentNode.right = insertedNode;
+        }
+
+        /*
+         * Colour the new node red rather than black. This choice is what makes
+         * the repair tractable:
+         * - A black node would add one to the black height of every path running
+         *   through it, breaking the equal-black-count property immediately and
+         *   in a way that cannot be observed locally.
+         * - A red node leaves all black counts unchanged, so the only property
+         *   that can now be violated is the one forbidding a red node from
+         *   having a red parent, which is a purely local condition.
+         */
+        insertedNode.color = Color.RED;
+
+        // Account for the stored value before repairing, since the repair does
+        // not add or remove any content.
+        size++;
+
+        // Restore the colour invariants that the red insertion may have broken.
+        insertFixup(insertedNode);
+    }
+
+    /**
+     * Restores the red-black properties after a red node has been linked into
+     * the tree.
+     *
+     * Detailed explanation of:
+     * - Purpose: Repairs the single class of violation that insertion can
+     *   introduce, namely a red node whose parent is also red, and does so
+     *   without disturbing the equal-black-count property.
+     * - Business context: This procedure is the reason the structure keeps its
+     *   logarithmic height. Every rotation it performs shortens the longest path
+     *   relative to the shortest, and the recolouring cases push the problem
+     *   upwards until it either disappears or reaches the root, where it is
+     *   resolved by colouring the root black.
+     * - Processing steps: The loop runs only while the current node's parent is
+     *   red, since a black parent means no violation exists. Within the loop the
+     *   node's uncle decides between two treatments, and the whole analysis
+     *   comes in a left-hand and a mirrored right-hand form depending on which
+     *   side of the grandparent the parent sits:
+     *   1. Red uncle: the parent and uncle are recoloured black and the
+     *      grandparent red. Every path through the grandparent keeps its black
+     *      count, so this is a pure recolouring. The grandparent may now clash
+     *      with its own parent, so it becomes the new current node and the loop
+     *      repeats one level higher. This is the only case that iterates, and it
+     *      is what makes the repair O(log n) rather than O(1).
+     *   2. Black uncle, current node on the inner side: a single rotation at the
+     *      parent converts this into case 3, which is the shape the final
+     *      rotation can actually fix.
+     *   3. Black uncle, current node on the outer side: recolour the parent
+     *      black and the grandparent red, then rotate at the grandparent. This
+     *      terminates the loop, because the subtree root is now black and can no
+     *      longer clash with anything above it.
+     * - Assumptions: Assumes the supplied node is red and is linked into the
+     *   tree, and that the only property currently violated is the red-red one.
+     * - Side effects: Recolours nodes along the path towards the root and
+     *   performs at most two rotations; may change the root reference.
+     *
+     * Time complexity: O(log n) worst case, dominated by the red-uncle case
+     * walking upwards one level at a time. At most two rotations are performed
+     * in total, which is the sense in which insertion is cheaper here than in an
+     * AVL tree.
+     * Space complexity: O(1); the repair is iterative.
+     *
+     * @param pInserted
+     * The newly inserted red node at which the repair begins. Must be a node of
+     * this tree.
+     */
+    private void insertFixup(RBNode pInserted) {
+        // Tracks the position of the potential red-red violation as it moves
+        // upwards through the tree.
+        RBNode currentNode = pInserted;
+
+        // A black parent means the red-red property holds and no repair is
+        // required. The root's parent is the black sentinel, so this condition
+        // also terminates the loop at the top of the tree.
+        while (currentNode.parent.color == Color.RED) {
+
+            // The grandparent exists whenever the parent is red, because a red
+            // node can never be the root and therefore always has a parent.
+            RBNode grandparent = currentNode.parent.parent;
+
+            if (currentNode.parent == grandparent.left) {
+                // Left-hand form: the parent is the grandparent's left child, so
+                // the uncle is the right child.
+                RBNode uncle = grandparent.right;
+
+                if (uncle.color == Color.RED) {
+                    // Case 1: pushing blackness down from the grandparent to its
+                    // two children preserves every black count while removing
+                    // the local red-red clash.
+                    currentNode.parent.color = Color.BLACK;
+                    uncle.color = Color.BLACK;
+                    grandparent.color = Color.RED;
+
+                    // The grandparent is now red and may clash with its own
+                    // parent, so the same analysis repeats one level higher.
+                    currentNode = grandparent;
+                } else {
+                    if (currentNode == currentNode.parent.right) {
+                        // Case 2: the node is on the inner side of the
+                        // grandparent, a shape the final rotation cannot fix
+                        // directly. Rotating at the parent moves it to the outer
+                        // side and turns this into case 3. The cursor moves to
+                        // the former parent, which is the node that descends.
+                        currentNode = currentNode.parent;
+                        rotateLeft(currentNode);
+                    }
+
+                    // Case 3: recolour so that the subtree root ends up black,
+                    // then rotate the grandparent down. The rotation restores the
+                    // black count that the recolouring would otherwise have
+                    // altered on the paths through the uncle.
+                    currentNode.parent.color = Color.BLACK;
+                    currentNode.parent.parent.color = Color.RED;
+                    rotateRight(currentNode.parent.parent);
+                }
+            } else {
+                // Right-hand form: exact mirror image of the above, with left
+                // and right exchanged throughout.
+                RBNode uncle = grandparent.left;
+
+                if (uncle.color == Color.RED) {
+                    // Case 1, mirrored.
+                    currentNode.parent.color = Color.BLACK;
+                    uncle.color = Color.BLACK;
+                    grandparent.color = Color.RED;
+                    currentNode = grandparent;
+                } else {
+                    if (currentNode == currentNode.parent.left) {
+                        // Case 2, mirrored.
+                        currentNode = currentNode.parent;
+                        rotateRight(currentNode);
+                    }
+
+                    // Case 3, mirrored.
+                    currentNode.parent.color = Color.BLACK;
+                    currentNode.parent.parent.color = Color.RED;
+                    rotateLeft(currentNode.parent.parent);
+                }
+            }
+        }
+
+        /*
+         * The root must always be black. Case 1 can colour it red on its way up,
+         * and forcing it black here is safe precisely because it adds one to the
+         * black count of every path in the tree simultaneously, which leaves all
+         * of them equal.
+         */
+        root.color = Color.BLACK;
+    }
 }
