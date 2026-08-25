@@ -91,4 +91,57 @@ public class ArrayStack<ContentType> {
    * the top element resides at index size - 1.
    */
   private int size;
+
+  /**
+   * Creates an empty stack using the default initial capacity.
+   *
+   * This is the constructor to use whenever the eventual number of elements is
+   * unknown, which is the common case for stacks driving recursive or
+   * backtracking algorithms. The chosen capacity is only a starting point; the
+   * stack grows on demand and the caller never observes a capacity limit.
+   *
+   * Time complexity: O(1) - a single fixed-size allocation.
+   * Space complexity: O(1) - the default capacity is a compile-time constant.
+   */
+  public ArrayStack() {
+    // Delegate to the capacity-aware constructor so that the allocation rules
+    // exist in exactly one place and cannot drift apart over time.
+    this(DEFAULT_INITIAL_CAPACITY);
+  }
+
+  /**
+   * Creates an empty stack whose backing array is pre-sized for the expected
+   * number of elements.
+   *
+   * Callers that already know how many elements they will push, for example when
+   * reversing a collection of known length, can use this constructor to avoid
+   * the intermediate copies that automatic growth would otherwise perform. The
+   * request is treated as a performance hint only and never as a hard limit; the
+   * stack still grows beyond it on demand.
+   *
+   * Time complexity: O(n) in the requested capacity n, because the JVM zeroes the
+   * freshly allocated array.
+   * Space complexity: O(n) in the requested capacity n.
+   *
+   * @param pInitialCapacity
+   * Expected number of elements the stack should hold before its first growth
+   * step. Values below the internal minimum capacity, including zero and
+   * negative values, are silently raised to that minimum rather than rejected,
+   * because an undersized hint is a performance detail and not a usage error
+   * that should abort the caller.
+   */
+  public ArrayStack(int pInitialCapacity) {
+    // Guard the allocation against degenerate hints: a zero-length array could
+    // never be enlarged by the multiplicative growth strategy, which would leave
+    // the stack permanently unable to accept elements.
+    int capacity = Math.max(pInitialCapacity, MINIMUM_CAPACITY);
+
+    // Allocate the backing storage as Object[] because generic array creation is
+    // impossible under type erasure; element types are enforced by the API.
+    elements = new Object[capacity];
+
+    // A freshly allocated stack holds no elements, so the next push writes to
+    // index zero.
+    size = 0;
+  }
 }
