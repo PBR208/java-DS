@@ -110,4 +110,61 @@ public class ArrayQueue<ContentType> {
    * would make a full ring indistinguishable from an empty one.
    */
   private int size;
+
+  /**
+   * Creates an empty queue using the default initial capacity.
+   *
+   * This is the constructor to use whenever the eventual number of elements is
+   * unknown, which is the common case for queues that buffer work items or hold
+   * the frontier of a breadth-first traversal. The chosen capacity is only a
+   * starting point; the ring grows on demand and the caller never observes a
+   * capacity limit.
+   *
+   * Time complexity: O(1) - a single fixed-size allocation.
+   * Space complexity: O(1) - the default capacity is a compile-time constant.
+   */
+  public ArrayQueue() {
+    // Delegate to the capacity-aware constructor so that the allocation rules
+    // exist in exactly one place and cannot drift apart over time.
+    this(DEFAULT_INITIAL_CAPACITY);
+  }
+
+  /**
+   * Creates an empty queue whose ring buffer is pre-sized for the expected
+   * number of elements.
+   *
+   * Callers that already know how many elements will be buffered, for example
+   * when the queue mirrors a collection of known length, can use this
+   * constructor to avoid the intermediate copies that automatic growth would
+   * otherwise perform. The request is treated as a performance hint only and
+   * never as a hard limit; the queue still grows beyond it on demand.
+   *
+   * Time complexity: O(n) in the requested capacity n, because the JVM zeroes the
+   * freshly allocated array.
+   * Space complexity: O(n) in the requested capacity n.
+   *
+   * @param pInitialCapacity
+   * Expected number of elements the queue should hold before its first growth
+   * step. Values below the internal minimum capacity, including zero and
+   * negative values, are silently raised to that minimum rather than rejected,
+   * because an undersized hint is a performance detail and not a usage error
+   * that should abort the caller.
+   */
+  public ArrayQueue(int pInitialCapacity) {
+    // Guard the allocation against degenerate hints. A zero-length array would
+    // not only be impossible to enlarge by multiplication, it would also make
+    // the modulo arithmetic of the ring divide by zero on the first enqueue.
+    int capacity = Math.max(pInitialCapacity, MINIMUM_CAPACITY);
+
+    // Allocate the ring as Object[] because generic array creation is impossible
+    // under type erasure; element types are enforced by the API instead.
+    elements = new Object[capacity];
+
+    // An empty ring has no wrap-around yet, so the front starts at the natural
+    // beginning of the array.
+    head = 0;
+
+    // A freshly allocated queue holds no elements.
+    size = 0;
+  }
 }
