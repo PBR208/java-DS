@@ -41,6 +41,18 @@ package linear.priorityqueue;
  * external synchronisation is required whenever instances are shared across
  * threads.
  *
+ * Complexity summary, with n as the number of stored elements:
+ * - enqueue: O(n) worst case when the element is the least urgent, O(1) when it
+ *   outranks everything stored; the whole cost of the structure sits here
+ * - dequeue, front, frontPriority: O(1) worst case, because the sorted invariant
+ *   places the answer at the front of the chain
+ * - isEmpty, size: O(1) in every case
+ * - overall space: O(n), at one node per stored element
+ * - draining a queue of n elements costs O(n) once the elements are inserted,
+ *   while building it costs O(n^2) in the worst case; a binary heap trades this
+ *   for O(log n) on both operations and is the better choice when insertions and
+ *   removals are interleaved at scale
+ *
  * @author PBR208 - https://github.com/PBR208
  * @version 1.0
  *

@@ -30,7 +30,7 @@ The goal of this project is to:
 - [x] Queue (Array-based)  
 - [x] Queue (Linked List-based)  
 - [x] Deque  
-- [ ] Priority Queue (Custom Implementation)
+- [x] Priority Queue (Custom Implementation)
 
 ---
 
