@@ -322,4 +322,47 @@ public class PriorityQueue<ContentType> {
     // Account for the inserted element.
     size++;
   }
+
+  /**
+   * Removes the most urgent element from the queue.
+   *
+   * The element removed is the one with the numerically smallest priority, and
+   * among several elements sharing that priority the one that was enqueued
+   * first. No search is required: the ordering invariant maintained by enqueue
+   * guarantees that this element is already at the front of the chain, so the
+   * operation degenerates to detaching the head node.
+   *
+   * Calling this method on an empty queue performs no action instead of raising
+   * an underflow exception, matching the defensive contract of the other linear
+   * structures in this library. Callers that need to inspect the element before
+   * discarding it must read it through front beforehand, because this method
+   * intentionally does not return the removed value.
+   *
+   * Time complexity: O(1) - the sorted invariant reduces removal to a single
+   * reference update, independent of the number of stored elements.
+   * Space complexity: O(1) - no auxiliary storage; the detached node becomes
+   * eligible for garbage collection.
+   */
+  public void dequeue() {
+    // Underflow is treated as a no-op so that callers can drain the queue in a
+    // loop without wrapping every call in an emptiness check.
+    if (isEmpty()) {
+      return;
+    }
+
+    // Remember the node being detached so its link can be cleared afterwards.
+    PriorityQueueNode removedNode = head;
+
+    // The successor is by construction the next most urgent element, so it
+    // becomes the new front without any comparison being necessary.
+    head = head.getNext();
+
+    // Cut the forward link of the detached node so that a caller still holding a
+    // reference to it cannot reach the elements that remain in the queue, and so
+    // that one stale reference cannot keep a whole chain of removed nodes alive.
+    removedNode.setNext(null);
+
+    // Account for the removal.
+    size--;
+  }
 }
