@@ -236,4 +236,108 @@ public class Deque<ContentType> {
     // The size counter is the single source of truth for the element count.
     return size;
   }
+
+  /**
+   * Inserts an element at the front of the deque.
+   *
+   * The element becomes the one returned by the next call to first and the one
+   * discarded by the next call to removeFirst. Combined with removeFirst this
+   * operation drives the deque as a stack; combined with removeLast it drives it
+   * as a FIFO queue in the reverse direction to addLast.
+   *
+   * Null arguments leave the deque unchanged instead of raising an exception.
+   * This mirrors the behaviour of the other linear structures in this library
+   * and keeps null out of the chain entirely, which is precisely what allows
+   * first and last to use null unambiguously as their empty-deque signal.
+   *
+   * Time complexity: O(1) - a fixed number of reference assignments, with no
+   * traversal and no reallocation, in the worst case as well as the best.
+   * Space complexity: O(1) - exactly one node is allocated per stored element.
+   *
+   * @param pContent
+   * Element to place at the front of the deque. May be any ContentType instance;
+   * passing null is tolerated and silently ignored, so callers that must
+   * distinguish "stored nothing" from "stored a value" have to check for null
+   * before calling.
+   */
+  public void addFirst(ContentType pContent) {
+    // Reject null early: storing it would break the contract of first and last,
+    // which report an empty deque by returning null.
+    if (pContent == null) {
+      return;
+    }
+
+    // Build the node detached from the chain, so that a partially linked node is
+    // never reachable from the deque.
+    DequeNode newNode = new DequeNode(pContent);
+
+    if (isEmpty()) {
+      // The first element of an empty deque is simultaneously its front and its
+      // back, so both end references have to point at the same node.
+      head = newNode;
+      tail = newNode;
+    } else {
+      // Establish both directions of the link in one step. Setting only one of
+      // them would leave the chain traversable from a single end and would break
+      // the removal operations, which rely on the symmetry.
+      newNode.setNext(head);
+      head.setPrevious(newNode);
+
+      // The new node now precedes the former front and becomes the front itself.
+      head = newNode;
+    }
+
+    // Account for the inserted element; the tail reference is deliberately left
+    // untouched here, because inserting at the front never changes the back.
+    size++;
+  }
+
+  /**
+   * Inserts an element at the back of the deque.
+   *
+   * The element becomes the one returned by the next call to last and the one
+   * discarded by the next call to removeLast. Combined with removeFirst this
+   * operation drives the deque as a FIFO queue, which is its most common use.
+   *
+   * The implementation is the exact mirror image of addFirst; the two are kept
+   * as separate methods rather than being folded into one parameterised helper
+   * because the symmetry is easier to verify when both directions are written
+   * out explicitly, and because that is where subtle end-reference bugs hide.
+   *
+   * Time complexity: O(1) - the maintained tail reference makes this a fixed
+   * number of assignments instead of a traversal to the end of the chain.
+   * Space complexity: O(1) - exactly one node is allocated per stored element.
+   *
+   * @param pContent
+   * Element to append at the back of the deque. May be any ContentType instance;
+   * passing null is tolerated and silently ignored, matching addFirst.
+   */
+  public void addLast(ContentType pContent) {
+    // Reject null for the same reason as in addFirst: null is reserved as the
+    // empty-deque signal of the read operations.
+    if (pContent == null) {
+      return;
+    }
+
+    // Build the node detached from the chain before linking it in.
+    DequeNode newNode = new DequeNode(pContent);
+
+    if (isEmpty()) {
+      // A single element is both ends of the deque at once.
+      head = newNode;
+      tail = newNode;
+    } else {
+      // Mirror of the linking performed by addFirst, with the roles of the two
+      // directions exchanged; both links are again established together.
+      newNode.setPrevious(tail);
+      tail.setNext(newNode);
+
+      // The new node now follows the former back and becomes the back itself.
+      tail = newNode;
+    }
+
+    // Account for the inserted element; the head reference stays valid, because
+    // appending at the back never changes the front.
+    size++;
+  }
 }
