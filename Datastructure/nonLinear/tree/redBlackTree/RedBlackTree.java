@@ -451,4 +451,146 @@ public class RedBlackTree<ContentType extends ComparableContent<ContentType>> {
         // The descent reached a leaf position without finding an equal value.
         return nil;
     }
+
+    /**
+     * Rotates the subtree rooted at the specified node to the left, promoting
+     * its right child into its position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides one of the two structural primitives from which all
+     *   red-black repairs are composed. A rotation changes the shape of the tree
+     *   while leaving the in-order sequence of the stored values untouched,
+     *   which is what makes it safe to use for rebalancing a search tree.
+     * - Business context: Rotations are the only operations in this class that
+     *   move nodes relative to one another. Recolouring alone can fix some
+     *   violations, but any violation that requires shortening a path can only
+     *   be repaired by rotating.
+     * - Processing steps:
+     *   1. Take the right child of the pivot; it will become the new subtree
+     *      root.
+     *   2. Move that child's left subtree across to become the pivot's new right
+     *      subtree, which is the step that preserves the ordering: those values
+     *      lie between the pivot and its right child, so they belong to the
+     *      right of the pivot and to the left of the promoted node.
+     *   3. Reattach the promoted node to the pivot's former parent, handling the
+     *      case where the pivot was the root.
+     *   4. Finally place the pivot as the left child of the promoted node.
+     *   Every one of these link updates is performed in both directions, because
+     *   the repair procedures navigate upwards as well as downwards.
+     * - Assumptions: Assumes the right child of the pivot is not the sentinel,
+     *   which every call site guarantees; rotating a sentinel into the subtree
+     *   root position would discard the pivot's subtree.
+     * - Side effects: Mutates the parent and child references of up to three
+     *   nodes and possibly the root reference of the tree. Colours are
+     *   deliberately left untouched: the calling repair procedure decides them,
+     *   because the correct colouring depends on which case it is handling.
+     *
+     * Time complexity: O(1); a fixed number of reference assignments regardless
+     * of subtree size.
+     * Space complexity: O(1); no allocation occurs.
+     *
+     * @param pPivot
+     * The node to rotate downwards into the left position. Must be a node of
+     * this tree and must have a right child other than the sentinel.
+     */
+    private void rotateLeft(RBNode pPivot) {
+        // The right child is promoted into the position currently held by the
+        // pivot.
+        RBNode promoted = pPivot.right;
+
+        // Step 1: the promoted node's left subtree holds exactly those values
+        // that are greater than the pivot but less than the promoted node, so it
+        // becomes the pivot's new right subtree. This is what keeps the in-order
+        // sequence unchanged.
+        pPivot.right = promoted.left;
+
+        // Maintain the upward link of the transferred subtree. The sentinel is
+        // excluded because its parent field is reserved for use by the delete
+        // repair and must not be overwritten here.
+        if (promoted.left != nil) {
+            promoted.left.parent = pPivot;
+        }
+
+        // Step 2: the promoted node inherits the pivot's former parent.
+        promoted.parent = pPivot.parent;
+
+        // Step 3: attach the promoted node underneath that parent, or make it
+        // the new root when the pivot was the root of the whole tree.
+        if (pPivot.parent == nil) {
+            root = promoted;
+        } else if (pPivot == pPivot.parent.left) {
+            pPivot.parent.left = promoted;
+        } else {
+            pPivot.parent.right = promoted;
+        }
+
+        // Step 4: the pivot descends to become the left child of the node that
+        // took its place, completing the rotation in both link directions.
+        promoted.left = pPivot;
+        pPivot.parent = promoted;
+    }
+
+    /**
+     * Rotates the subtree rooted at the specified node to the right, promoting
+     * its left child into its position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the mirror image of rotateLeft. The red-black case
+     *   analysis is symmetric in the two directions, and both repair procedures
+     *   handle a left-hand and a right-hand case that differ only in which of
+     *   these two rotations they invoke.
+     * - Business context: See rotateLeft; the same reasoning applies with the
+     *   directions exchanged.
+     * - Processing steps: Mirrors rotateLeft exactly, promoting the left child
+     *   and transferring that child's right subtree across to become the pivot's
+     *   new left subtree. The two methods are written out separately rather than
+     *   being folded into one direction-parameterised helper, because the
+     *   symmetry is easier to verify when both forms are visible and because
+     *   this is where mistaken link directions are most likely to hide.
+     * - Assumptions: Assumes the left child of the pivot is not the sentinel,
+     *   which every call site guarantees.
+     * - Side effects: Mutates the parent and child references of up to three
+     *   nodes and possibly the root reference. Colours are left untouched.
+     *
+     * Time complexity: O(1); a fixed number of reference assignments.
+     * Space complexity: O(1); no allocation occurs.
+     *
+     * @param pPivot
+     * The node to rotate downwards into the right position. Must be a node of
+     * this tree and must have a left child other than the sentinel.
+     */
+    private void rotateRight(RBNode pPivot) {
+        // The left child is promoted into the position currently held by the
+        // pivot.
+        RBNode promoted = pPivot.left;
+
+        // The promoted node's right subtree holds exactly those values that are
+        // less than the pivot but greater than the promoted node, so it becomes
+        // the pivot's new left subtree.
+        pPivot.left = promoted.right;
+
+        // Maintain the upward link of the transferred subtree, excluding the
+        // sentinel for the same reason as in rotateLeft.
+        if (promoted.right != nil) {
+            promoted.right.parent = pPivot;
+        }
+
+        // The promoted node inherits the pivot's former parent.
+        promoted.parent = pPivot.parent;
+
+        // Attach the promoted node underneath that parent, or make it the new
+        // root when the pivot was the root of the whole tree.
+        if (pPivot.parent == nil) {
+            root = promoted;
+        } else if (pPivot == pPivot.parent.right) {
+            pPivot.parent.right = promoted;
+        } else {
+            pPivot.parent.left = promoted;
+        }
+
+        // The pivot descends to become the right child of the node that took its
+        // place, completing the rotation in both link directions.
+        promoted.right = pPivot;
+        pPivot.parent = promoted;
+    }
 }
