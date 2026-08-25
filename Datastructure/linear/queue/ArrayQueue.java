@@ -232,4 +232,108 @@ public class ArrayQueue<ContentType> {
     // independently of the logical element count.
     return elements.length;
   }
+
+  /**
+   * Appends an element to the end of the queue.
+   *
+   * The element takes its place behind all elements that are already waiting and
+   * will only be returned by front once every one of them has been removed. If
+   * the ring is exhausted it is transparently replaced by a larger one before
+   * the write, so the caller never encounters an overflow condition and never
+   * has to manage capacity manually.
+   *
+   * Null arguments leave the queue unchanged instead of raising an exception.
+   * This mirrors the behaviour of the node-based {@link Queue} in this package
+   * and keeps null out of the storage entirely, which is precisely what allows
+   * front to use null unambiguously as its empty-queue signal.
+   *
+   * Time complexity: O(1) amortised, O(n) worst case. Almost every call is a
+   * single indexed write; the call that exhausts the ring copies all n stored
+   * elements, but doubling makes that rare enough for the total cost of n
+   * enqueues to remain linear.
+   * Space complexity: O(1) amortised per element. A growth step temporarily
+   * holds both the old and the new array, so peak usage during that step is O(n).
+   *
+   * @param pContent
+   * Element to append to the queue. May be any ContentType instance; passing
+   * null is tolerated and silently ignored, so callers that must distinguish
+   * "stored nothing" from "stored a value" have to check for null before
+   * calling.
+   */
+  public void enqueue(ContentType pContent) {
+    // Reject null early: storing it would break the contract of front, which
+    // reports an empty queue by returning null.
+    if (pContent == null) {
+      return;
+    }
+
+    // Grow before writing whenever the ring is full. A full ring is the one case
+    // in which the derived tail position below would collide with the head and
+    // silently overwrite the oldest element.
+    if (size == elements.length) {
+      resize(elements.length * GROWTH_FACTOR);
+    }
+
+    // Derive the first free slot from the front position and the element count.
+    // The modulo is what lets the occupied region wrap past the end of the array
+    // instead of forcing the elements to be shifted back to index zero.
+    int tail = (head + size) % elements.length;
+
+    // Place the element at the back of the queue and account for it.
+    elements[tail] = pContent;
+    size++;
+  }
+
+  /**
+   * Replaces the ring buffer with one of the requested capacity, preserving all
+   * stored elements and their FIFO order.
+   *
+   * This is the single point at which storage is reallocated; both the growth
+   * path of enqueue and the shrink path of dequeue delegate here so that the
+   * invariants around capacity live in one place. Besides resizing, the method
+   * normalises the ring: the elements are rewritten starting at index zero and
+   * the head is reset accordingly, so a queue that had wrapped around the end of
+   * the old array comes out contiguous again.
+   *
+   * Time complexity: O(n) in the current element count n, dominated by the
+   * element-by-element transfer.
+   * Space complexity: O(pNewCapacity), with both arrays alive simultaneously
+   * until the new reference is published.
+   *
+   * @param pNewCapacity
+   * Desired length of the new ring buffer. Must be large enough to hold the
+   * current element count, which every call site guarantees; values below the
+   * internal minimum capacity are raised to it so that the array can always be
+   * doubled again later and the modulo arithmetic never divides by zero.
+   */
+  private void resize(int pNewCapacity) {
+    // Never fall below the minimum, otherwise a zero-length array would leave the
+    // multiplicative growth strategy unable to produce any additional space.
+    int targetCapacity = Math.max(pNewCapacity, MINIMUM_CAPACITY);
+
+    // Allocate the replacement ring; Object[] is required for the same erasure
+    // reason that applies to the original allocation.
+    Object[] resizedElements = new Object[targetCapacity];
+
+    /*
+     * Transfer in logical order rather than by a bulk array copy:
+     * 1. The occupied region may wrap past the end of the old array, so a single
+     *    contiguous copy cannot express it.
+     * 2. Reading through the modulo expression walks the elements from front to
+     *    back regardless of where the wrap point sits.
+     * 3. Writing them to ascending indices from zero unwraps the ring, which is
+     *    what allows the head to be reset below.
+     */
+    for (int offset = 0; offset < size; offset++) {
+      resizedElements[offset] = elements[(head + offset) % elements.length];
+    }
+
+    // Publish the new storage; the previous array becomes unreachable and is
+    // reclaimed by the garbage collector.
+    elements = resizedElements;
+
+    // The elements were just written contiguously from index zero, so the front
+    // of the queue now sits at the natural beginning of the array again.
+    head = 0;
+  }
 }
