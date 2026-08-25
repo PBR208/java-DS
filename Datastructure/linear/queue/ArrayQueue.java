@@ -390,4 +390,34 @@ public class ArrayQueue<ContentType> {
       resize(elements.length / GROWTH_FACTOR);
     }
   }
+
+  /**
+   * Returns the element at the front of the queue without removing it.
+   *
+   * This is the read half of the read-then-discard pattern that the API imposes:
+   * because dequeue returns nothing, consumers inspect the waiting element here
+   * and only afterwards remove it. The queue is left completely unmodified by
+   * this call, so repeated invocations always yield the same element.
+   *
+   * Time complexity: O(1) - a single indexed read, with no resizing involved.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * The element that has been waiting longest and has not been removed yet, or
+   * null when the queue is empty. Null is unambiguous as an empty-queue marker
+   * because enqueue refuses to store null elements.
+   */
+  @SuppressWarnings("unchecked")
+  public ContentType front() {
+    // An empty queue has no front element; report that through null rather than
+    // reading the head slot, which holds a stale null in that state anyway.
+    if (isEmpty()) {
+      return null;
+    }
+
+    // The head index always points at the oldest element while the queue is
+    // non-empty. The cast is safe despite the erased array type because enqueue
+    // is the only writer into this array and it accepts ContentType exclusively.
+    return (ContentType) elements[head];
+  }
 }
