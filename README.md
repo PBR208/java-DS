@@ -27,7 +27,7 @@ The goal of this project is to:
 - [ ] Circular Linked List  
 - [x] Stack (Array-based)  
 - [x] Stack (Linked List-based)  
-- [ ] Queue (Array-based)  
+- [x] Queue (Array-based)  
 - [x] Queue (Linked List-based)  
 - [ ] Deque  
 - [ ] Priority Queue (Custom Implementation)

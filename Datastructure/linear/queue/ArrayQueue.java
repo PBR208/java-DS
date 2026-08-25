@@ -30,6 +30,13 @@ package linear.queue;
  * which can expose elements that were already removed; external synchronisation
  * is required whenever instances are shared across threads.
  *
+ * Complexity summary, with n as the number of stored elements:
+ * - enqueue: O(1) amortised, O(n) on the call that triggers a growth step
+ * - dequeue: O(1) amortised, O(n) on the call that triggers a shrink step
+ * - front, isEmpty, size, capacity: O(1) in every case
+ * - overall space: O(n), with the ring bounded to at most four times the
+ *   element count by the shrink strategy
+ *
  * @author PBR208 - https://github.com/PBR208
  * @version 1.0
  *
