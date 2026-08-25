@@ -293,4 +293,49 @@ public class ArrayStack<ContentType> {
     // reclaimed by the garbage collector.
     elements = resizedElements;
   }
+
+  /**
+   * Removes the element currently located at the top of the stack.
+   *
+   * Calling this method on an empty stack performs no action instead of raising
+   * an underflow exception, matching the defensive contract of the node-based
+   * {@link Stack} in this package. Callers that need to inspect the element
+   * before discarding it must read it through top first, because this method
+   * intentionally does not return the removed value.
+   *
+   * Beyond decrementing the size counter, the vacated slot is cleared and the
+   * backing array is shrunk once it becomes mostly empty, so that a stack which
+   * grew large during a burst of activity does not keep that memory reserved for
+   * the remaining lifetime of the object.
+   *
+   * Time complexity: O(1) amortised, O(n) worst case. Only the calls that cross
+   * the quarter-capacity threshold copy the remaining n elements, and the gap
+   * between the shrink and growth thresholds guarantees that no alternating
+   * sequence of pushes and pops can trigger those copies repeatedly.
+   * Space complexity: O(1) amortised. A shrink step briefly holds both arrays,
+   * making peak usage during that step O(n).
+   */
+  public void pop() {
+    // Underflow is treated as a no-op so that callers can pop defensively
+    // without wrapping every call in an emptiness check.
+    if (isEmpty()) {
+      return;
+    }
+
+    // Move the top marker down first; the vacated index is now the former top.
+    size--;
+
+    // Clear the abandoned slot. Without this the array would keep a strong
+    // reference to a logically removed element and prevent its collection, the
+    // loitering effect that makes naive array-backed stacks retain memory.
+    elements[size] = null;
+
+    // Shrink only once the array is mostly empty. Reacting already at half
+    // capacity would let an alternating push/pop sequence resize on every call.
+    if (size > 0 && size <= elements.length / SHRINK_THRESHOLD_DIVISOR) {
+      // Halve the storage rather than trimming to the exact element count, which
+      // leaves headroom for subsequent pushes and keeps the cost amortised.
+      resize(elements.length / GROWTH_FACTOR);
+    }
+  }
 }
