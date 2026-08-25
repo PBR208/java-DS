@@ -170,4 +170,67 @@ public class PriorityQueue<ContentType> {
    * decide whether to keep draining the queue.
    */
   private int size;
+
+  /**
+   * Creates an empty priority queue.
+   *
+   * No storage is reserved up front, because a linked representation allocates
+   * per element rather than in blocks; an unused queue therefore costs nothing
+   * beyond the object itself. The queue accepts elements of type ContentType
+   * under any integer priority and imposes no capacity limit other than the
+   * available heap.
+   *
+   * Time complexity: O(1) - two field assignments.
+   * Space complexity: O(1) - no element storage is allocated.
+   */
+  public PriorityQueue() {
+    // An empty queue has no chain at all, so there is no most urgent element.
+    head = null;
+
+    // No elements are stored yet.
+    size = 0;
+  }
+
+  /**
+   * Checks whether the priority queue currently holds any elements.
+   *
+   * This is the guard clause callers are expected to use before reading or
+   * removing, because both of those operations are defined to fail silently on
+   * an empty queue rather than to raise an exception. It is also the natural
+   * loop condition for draining the queue, which is how a priority queue is
+   * normally consumed: repeatedly take the most urgent element until none
+   * remain.
+   *
+   * Time complexity: O(1) - a single reference comparison.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * True when no element is stored, false as soon as at least one element has
+   * been enqueued and not yet removed.
+   */
+  public boolean isEmpty() {
+    // The head reference is null exactly while the chain is empty, which tests
+    // the structure itself rather than the bookkeeping counter.
+    return head == null;
+  }
+
+  /**
+   * Returns the number of elements currently stored in the priority queue.
+   *
+   * The value is maintained incrementally by enqueue and dequeue, so obtaining
+   * it never walks the chain. Callers typically use it to report or bound the
+   * outstanding backlog, for example to decide whether a scheduler is falling
+   * behind its producers.
+   *
+   * Time complexity: O(1) - the count is maintained incrementally rather than
+   * derived by traversal.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * Element count, zero for an empty queue and never negative.
+   */
+  public int size() {
+    // The size counter is the single source of truth for the element count.
+    return size;
+  }
 }
