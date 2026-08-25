@@ -60,6 +60,23 @@ import nonLinear.tree.base.ComparableContent;
  * requiring guaranteed logarithmic-time ordered access, and as the reference
  * implementation against which the AVL variant can be compared.
  *
+ * Complexity summary, with n as the number of stored values:
+ * - search: O(log n) worst case, O(1) auxiliary space
+ * - insert: O(log n) worst case, performing at most two rotations
+ * - remove: O(log n) worst case, performing at most three rotations
+ * - inOrder, preOrder, postOrder: O(n) time, O(log n) stack space
+ * - getBlackHeight: O(log n); getHeight: O(n), since no height is cached
+ * - isEmpty, size: O(1)
+ * - overall space: O(n), at one node per stored value plus a single shared
+ *   sentinel per tree instance
+ *
+ * The height is bounded by 2*log2(n+1), which is the guarantee that makes every
+ * logarithmic bound above a worst case rather than an average. The bounded
+ * rotation counts are the practical difference to the AVL variant: both keep
+ * lookups logarithmic, but this structure repairs itself with a constant number
+ * of structural changes per update, whereas an AVL tree may rotate at every
+ * level on the way back to the root after a removal.
+ *
  * @param <ContentType>
  * The type of content stored at each node of the tree. Must implement
  * ComparableContent to provide the ordering comparisons required for binary

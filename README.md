@@ -39,7 +39,7 @@ The goal of this project is to:
 - [ ] Binary Tree  
 - [ ] Binary Search Tree (BST)  
 - [ ] AVL Tree  
-- [ ] Red-Black Tree  
+- [x] Red-Black Tree  
 - [ ] Heap (Min/Max Heap)  
 - [ ] Trie (Prefix Tree)  
 - [ ] Segment Tree  
