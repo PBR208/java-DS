@@ -440,4 +440,60 @@ public class Deque<ContentType> {
     // Account for the removal.
     size--;
   }
+
+  /**
+   * Returns the element at the front of the deque without removing it.
+   *
+   * This is the read half of the read-then-discard pattern that the API imposes:
+   * because removeFirst returns nothing, consumers inspect the front element
+   * here and only afterwards remove it. The deque is left completely unmodified,
+   * so repeated invocations always yield the same element.
+   *
+   * Time complexity: O(1) - a single reference dereference.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * The element currently at the front, or null when the deque is empty. Null is
+   * unambiguous as an empty-deque marker because the insertion operations refuse
+   * to store null elements.
+   */
+  public ContentType first() {
+    // An empty deque has no front element; report that through null rather than
+    // dereferencing the null head reference.
+    if (isEmpty()) {
+      return null;
+    }
+
+    // The head node always carries the front element while the deque is
+    // non-empty.
+    return head.getContent();
+  }
+
+  /**
+   * Returns the element at the back of the deque without removing it.
+   *
+   * Mirror image of first, and the read half belonging to removeLast. Like every
+   * other operation on the back, it is constant-time only because the tail
+   * reference is maintained by the insertion and removal operations.
+   *
+   * Time complexity: O(1) - a single reference dereference, with no traversal to
+   * the end of the chain.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * The element currently at the back, or null when the deque is empty. For a
+   * deque holding exactly one element this returns the same element as first,
+   * because both ends then refer to the same node.
+   */
+  public ContentType last() {
+    // An empty deque has no back element; report that through null rather than
+    // dereferencing the null tail reference.
+    if (isEmpty()) {
+      return null;
+    }
+
+    // The tail node always carries the back element while the deque is
+    // non-empty.
+    return tail.getContent();
+  }
 }
