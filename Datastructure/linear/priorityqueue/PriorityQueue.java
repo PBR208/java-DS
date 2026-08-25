@@ -365,4 +365,69 @@ public class PriorityQueue<ContentType> {
     // Account for the removal.
     size--;
   }
+
+  /**
+   * Returns the most urgent element without removing it.
+   *
+   * This is the read half of the read-then-discard pattern that the API imposes:
+   * because dequeue returns nothing, consumers inspect the element here and only
+   * afterwards remove it. The queue is left completely unmodified, so repeated
+   * invocations always yield the same element until it is dequeued.
+   *
+   * Time complexity: O(1) - a single reference dereference, because the sorted
+   * invariant places the answer at the front of the chain.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * The element with the smallest priority value, or the earliest enqueued among
+   * several sharing that value. Returns null when the queue is empty, which is
+   * unambiguous as an empty-queue marker because enqueue refuses to store null
+   * elements.
+   */
+  public ContentType front() {
+    // An empty queue has no most urgent element; report that through null rather
+    // than dereferencing the null head reference.
+    if (isEmpty()) {
+      return null;
+    }
+
+    // The sorted invariant guarantees the front node holds the answer.
+    return head.getContent();
+  }
+
+  /**
+   * Returns the priority of the most urgent element without removing it.
+   *
+   * Callers frequently need the key rather than the payload: a Dijkstra
+   * implementation compares the front distance against a candidate before
+   * deciding whether to relax an edge, and a scheduler compares the front
+   * timestamp against the clock to decide whether the earliest task is due yet.
+   * Exposing the priority avoids forcing every element type to carry a redundant
+   * copy of its own key.
+   *
+   * The return type is the boxed Integer rather than the primitive int
+   * specifically so that the empty queue can be reported as null, consistently
+   * with front. The alternative of returning a primitive would require a
+   * sentinel such as the minimum int value, which would be indistinguishable
+   * from a legitimately stored priority and would silently corrupt any caller
+   * using the full integer range.
+   *
+   * Time complexity: O(1) - a single reference dereference.
+   * Space complexity: O(1) - one boxed value is produced per call.
+   *
+   * @return
+   * The priority the front element was enqueued under, or null when the queue is
+   * empty.
+   */
+  public Integer frontPriority() {
+    // An empty queue has no front priority; null keeps this consistent with the
+    // empty-queue signal used by front.
+    if (isEmpty()) {
+      return null;
+    }
+
+    // Boxing is intentional here and explained in the method documentation; the
+    // value itself comes straight from the front node.
+    return head.getPriority();
+  }
 }
