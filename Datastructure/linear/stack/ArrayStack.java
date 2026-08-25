@@ -209,4 +209,88 @@ public class ArrayStack<ContentType> {
     // independently of the logical element count.
     return elements.length;
   }
+
+  /**
+   * Pushes an element onto the top of the stack.
+   *
+   * The element becomes the one returned by the next call to top and the one
+   * discarded by the next call to pop. If the backing array is exhausted it is
+   * transparently replaced by a larger one before the write, so the caller never
+   * encounters an overflow condition and never has to manage capacity manually.
+   *
+   * Null arguments leave the stack unchanged instead of raising an exception.
+   * This mirrors the behaviour of the node-based {@link Stack} in this package
+   * and keeps null out of the storage entirely, which is precisely what allows
+   * top to use null unambiguously as its empty-stack signal.
+   *
+   * Time complexity: O(1) amortised, O(n) worst case. Almost every call is a
+   * single indexed write; the call that exhausts the array copies all n stored
+   * elements, but doubling makes that rare enough for the total cost of n pushes
+   * to remain linear.
+   * Space complexity: O(1) amortised per element. A growth step temporarily
+   * holds both the old and the new array, so peak usage during that step is O(n).
+   *
+   * @param pContent
+   * Element to place on top of the stack. May be any ContentType instance;
+   * passing null is tolerated and silently ignored, so callers that must
+   * distinguish "stored nothing" from "stored a value" have to check for null
+   * before calling.
+   */
+  public void push(ContentType pContent) {
+    // Reject null early: storing it would break the contract of top, which
+    // reports an empty stack by returning null.
+    if (pContent == null) {
+      return;
+    }
+
+    // Grow before writing whenever the backing array is full, because the write
+    // index below is the current size and must stay inside the array bounds.
+    if (size == elements.length) {
+      resize(elements.length * GROWTH_FACTOR);
+    }
+
+    // The top of the stack is the highest occupied index, so the new element is
+    // appended at the first free slot and the counter moves up with it.
+    elements[size] = pContent;
+    size++;
+  }
+
+  /**
+   * Replaces the backing array with one of the requested capacity, preserving
+   * all stored elements and their order.
+   *
+   * This is the single point at which storage is reallocated; both the growth
+   * path of push and the shrink path of pop delegate here so that the invariants
+   * around capacity live in one place. The operation copies every stored element
+   * and is therefore the expensive step that the doubling and quartering
+   * thresholds are designed to keep rare.
+   *
+   * Time complexity: O(n) in the current element count n, dominated by the bulk
+   * copy of the live elements.
+   * Space complexity: O(pNewCapacity), with both arrays alive simultaneously
+   * until the new reference is published.
+   *
+   * @param pNewCapacity
+   * Desired length of the new backing array. Must be large enough to hold the
+   * current element count, which every call site guarantees; values below the
+   * internal minimum capacity are raised to it so that the array can always be
+   * doubled again later.
+   */
+  private void resize(int pNewCapacity) {
+    // Never fall below the minimum, otherwise a zero-length array would leave the
+    // multiplicative growth strategy unable to produce any additional space.
+    int targetCapacity = Math.max(pNewCapacity, MINIMUM_CAPACITY);
+
+    // Allocate the replacement storage; Object[] is required for the same
+    // erasure reason that applies to the original allocation.
+    Object[] resizedElements = new Object[targetCapacity];
+
+    // Transfer the live elements only. Indices at or above the current size hold
+    // either nothing or already-cleared slots and must not be carried over.
+    System.arraycopy(elements, 0, resizedElements, 0, size);
+
+    // Publish the new storage; the previous array becomes unreachable and is
+    // reclaimed by the garbage collector.
+    elements = resizedElements;
+  }
 }
