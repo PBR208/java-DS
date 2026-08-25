@@ -831,4 +831,400 @@ public class RedBlackTree<ContentType extends ComparableContent<ContentType>> {
          */
         root.color = Color.BLACK;
     }
+
+    /**
+     * Replaces one subtree with another by rewiring the parent link.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the single splice primitive used by the removal
+     *   procedure, so that the three shapes a removed node can have are all
+     *   expressed as "put this subtree where that one was".
+     * - Business context: Concentrating the parent rewiring in one place is what
+     *   keeps the removal procedure readable; without it, each of the removal
+     *   cases would repeat the same three-way branch on whether the replaced
+     *   node was a left child, a right child or the root.
+     * - Processing steps: Points the replaced node's parent at the replacement,
+     *   choosing the correct side, or updates the tree root when the replaced
+     *   node had no parent. Then points the replacement back at that parent.
+     * - Assumptions: Assumes both arguments belong to this tree. The replacement
+     *   may be the sentinel, which is why its parent is assigned unconditionally
+     *   rather than being guarded: the delete repair may begin at the sentinel
+     *   and needs the upward link that this assignment leaves behind.
+     * - Side effects: Mutates one parent-side child reference or the root
+     *   reference, and the parent reference of the replacement. The replaced
+     *   node's own child references are deliberately left intact, because the
+     *   caller may still need to read them.
+     *
+     * Time complexity: O(1); a fixed number of reference assignments.
+     * Space complexity: O(1); no allocation occurs.
+     *
+     * @param pReplaced
+     * The node whose position in the tree is being taken over. Must be a node of
+     * this tree and must not be the sentinel.
+     *
+     * @param pReplacement
+     * The node to install in that position. May be the sentinel, which is how a
+     * node with no children is spliced out.
+     */
+    private void transplant(RBNode pReplaced, RBNode pReplacement) {
+        if (pReplaced.parent == nil) {
+            // The replaced node was the root, so the replacement becomes the new
+            // root of the whole tree.
+            root = pReplacement;
+        } else if (pReplaced == pReplaced.parent.left) {
+            pReplaced.parent.left = pReplacement;
+        } else {
+            pReplaced.parent.right = pReplacement;
+        }
+
+        // Assign the upward link unconditionally, including when the replacement
+        // is the sentinel: the delete repair can start at the sentinel and relies
+        // on this parent reference to walk upwards from there.
+        pReplacement.parent = pReplaced.parent;
+    }
+
+    /**
+     * Returns the node holding the smallest value in the subtree rooted at the
+     * specified node.
+     *
+     * Detailed explanation of:
+     * - Purpose: Locates the in-order successor of a node that has two children,
+     *   which is the value that must take its place when it is removed.
+     * - Business context: Removing a node with two children cannot simply splice
+     *   it out, because it has two subtrees and only one parent link to hang them
+     *   from. The standard resolution is to move the smallest value of the right
+     *   subtree into the vacated position, since that value is the only one that
+     *   is simultaneously greater than everything in the left subtree and less
+     *   than everything remaining in the right subtree.
+     * - Processing steps: Follows left child references until a node without a
+     *   left child is reached; by the ordering invariant that node holds the
+     *   minimum of the subtree.
+     * - Assumptions: Assumes the supplied node is not the sentinel, which every
+     *   call site guarantees.
+     * - Side effects: None; this method only reads the structure.
+     *
+     * Time complexity: O(log n), bounded by the height of the tree.
+     * Space complexity: O(1); the descent is iterative.
+     *
+     * @param pSubtreeRoot
+     * Root of the subtree to search. Must not be the sentinel.
+     *
+     * @return
+     * The node holding the smallest value in that subtree, which is the supplied
+     * node itself when it has no left child.
+     */
+    private RBNode minimum(RBNode pSubtreeRoot) {
+        // Descend to the leftmost node, which by the ordering invariant carries
+        // the smallest value of the subtree.
+        RBNode currentNode = pSubtreeRoot;
+
+        while (currentNode.left != nil) {
+            currentNode = currentNode.left;
+        }
+
+        return currentNode;
+    }
+
+    /**
+     * Removes the value considered equal to the supplied content from the tree,
+     * maintaining both the binary search ordering and all five red-black
+     * properties.
+     *
+     * Detailed explanation of:
+     * - Purpose: Detaches a stored value and repairs whatever colour damage the
+     *   detachment caused, so that the height bound continues to hold across
+     *   arbitrary interleavings of insertions and removals.
+     * - Business context: This is the operation that distinguishes a complete
+     *   red-black implementation from a partial one. Insertion alone is
+     *   comparatively simple; removal has to contend with the fact that
+     *   detaching a black node reduces the black count of every path through it
+     *   by one, which is a non-local violation.
+     * - Processing steps:
+     *   1. Locate the node, returning immediately when the value is absent.
+     *   2. Determine which node is physically detached and which node moves into
+     *      the vacated position. When the removed node has at most one child, it
+     *      is spliced out directly and its only child moves up. When it has two
+     *      children, its in-order successor is moved into its position instead,
+     *      and it is the successor that is physically detached from further down
+     *      the tree.
+     *   3. Remember the colour actually lost by the structure, and the node that
+     *      moved into the detached position, since those two facts alone
+     *      determine whether a repair is needed and where it must start.
+     *   4. Repair only when the lost colour was black. Losing a red node changes
+     *      no black count and can create no red-red clash, so no repair is
+     *      needed at all in that case.
+     * - Assumptions: Assumes the ordering comparisons are consistent with those
+     *   that governed insertion, so that the descent finds the node if it exists.
+     * - Side effects: Detaches one node, decrements the element count, and may
+     *   recolour and rotate nodes along the path back to the root.
+     *
+     * Time complexity: O(log n): a logarithmic descent to find the node, a
+     * logarithmic successor lookup, and a repair performing at most three
+     * rotations plus a recolouring walk bounded by the height.
+     * Space complexity: O(1); every phase is iterative.
+     *
+     * @param pContent
+     * The value to remove, identified by the ordering comparisons rather than by
+     * object identity. If null, or if no equal value is stored, this method
+     * performs no action rather than raising an exception.
+     */
+    public void remove(ContentType pContent) {
+        // A null key cannot be compared, so there is nothing to locate.
+        if (pContent == null) {
+            return;
+        }
+
+        // Locate the node carrying an equal value.
+        RBNode removedNode = searchNode(pContent);
+
+        // Removing an absent value is a no-op, consistent with the tolerant
+        // contract the rest of this library uses for underflow conditions.
+        if (removedNode == nil) {
+            return;
+        }
+
+        /*
+         * Two distinct nodes matter from here on:
+         * - removedNode is the node whose content leaves the tree.
+         * - detachedNode is the node that physically leaves its position, which
+         *   is the same node only when it has fewer than two children.
+         * The colour that the structure actually loses is the colour of
+         * detachedNode, which is why it is captured before anything is rewired.
+         */
+        RBNode detachedNode = removedNode;
+        Color detachedColor = detachedNode.color;
+
+        // The node that ends up occupying the detached position, and therefore
+        // the point at which any black-count deficit will be located.
+        RBNode replacementNode;
+
+        if (removedNode.left == nil) {
+            // At most one child, on the right: the right subtree moves straight
+            // up into the removed node's position. This also covers the
+            // no-children case, where the right child is the sentinel.
+            replacementNode = removedNode.right;
+            transplant(removedNode, removedNode.right);
+        } else if (removedNode.right == nil) {
+            // Exactly one child, on the left: mirror of the previous case.
+            replacementNode = removedNode.left;
+            transplant(removedNode, removedNode.left);
+        } else {
+            /*
+             * Two children. The in-order successor takes over the removed node's
+             * position and its colour, so from the perspective of the colour
+             * invariants nothing changed at that position at all. What did
+             * change is further down, where the successor used to sit, so it is
+             * the successor's original colour that must be repaired for.
+             */
+            detachedNode = minimum(removedNode.right);
+            detachedColor = detachedNode.color;
+
+            // The successor has no left child by construction, so its right
+            // subtree is what moves into its vacated position.
+            replacementNode = detachedNode.right;
+
+            if (detachedNode.parent == removedNode) {
+                /*
+                 * The successor is the removed node's direct right child, so its
+                 * position is not vacated independently. The parent link is set
+                 * explicitly because the replacement may be the sentinel, whose
+                 * parent must still point at the successor for the repair to
+                 * walk upwards correctly.
+                 */
+                replacementNode.parent = detachedNode;
+            } else {
+                // Splice the successor out of its own position first, then hang
+                // the removed node's right subtree underneath it.
+                transplant(detachedNode, detachedNode.right);
+                detachedNode.right = removedNode.right;
+                detachedNode.right.parent = detachedNode;
+            }
+
+            // Move the successor into the removed node's position and adopt its
+            // left subtree.
+            transplant(removedNode, detachedNode);
+            detachedNode.left = removedNode.left;
+            detachedNode.left.parent = detachedNode;
+
+            /*
+             * Inheriting the removed node's colour is what confines the damage to
+             * the successor's original location. Without this the black count of
+             * every path through this position could change, turning a local
+             * repair into a global one.
+             */
+            detachedNode.color = removedNode.color;
+        }
+
+        // Account for the removed value.
+        size--;
+
+        /*
+         * A repair is required only when a black node left the structure. Losing
+         * a red node cannot change any black count, and cannot create a red-red
+         * clash either, because a red node's parent and children are all black.
+         */
+        if (detachedColor == Color.BLACK) {
+            removeFixup(replacementNode);
+        }
+    }
+
+    /**
+     * Restores the red-black properties after a black node has been detached.
+     *
+     * Detailed explanation of:
+     * - Purpose: Repairs the black-count deficit created by removing a black
+     *   node. Conceptually the node now occupying the vacated position carries
+     *   one unit of "extra blackness" that has to be discharged, either by
+     *   absorbing it into a red node, by borrowing a black node from the sibling
+     *   side through rotation, or by pushing the deficit upwards until it
+     *   reaches the root, where it simply disappears.
+     * - Business context: This is the most intricate procedure of the structure
+     *   and the reason removal from a red-black tree is often omitted from
+     *   teaching implementations. Documenting the four cases explicitly is the
+     *   point of including it here.
+     * - Processing steps: The loop continues while the deficit sits on a
+     *   non-root black node, since a red node can absorb it by simply being
+     *   recoloured black, and the root can discard it outright. Each iteration
+     *   inspects the sibling and applies one of four cases, in a left-hand form
+     *   and a mirrored right-hand form:
+     *   1. Red sibling: rotate it up and recolour, which converts the situation
+     *      into one of the remaining cases with a black sibling. This case never
+     *      repeats, it only reshapes.
+     *   2. Black sibling with two black children: recolour the sibling red. Both
+     *      sides below the parent now have equal black counts, but the parent's
+     *      whole subtree is one short, so the deficit moves up to the parent and
+     *      the loop repeats. This is the only iterating case.
+     *   3. Black sibling whose inner child is red and outer child is black:
+     *      rotate at the sibling to move the red child to the outer side,
+     *      converting this into case 4.
+     *   4. Black sibling with a red outer child: a rotation at the parent
+     *      combined with recolouring moves a black node onto the deficient side,
+     *      discharging the deficit for good. The loop terminates here.
+     * - Assumptions: Assumes the supplied node currently carries the deficit and
+     *   that all other properties hold. The node may be the sentinel, whose
+     *   parent link was deliberately set during the splice for exactly this
+     *   reason.
+     * - Side effects: Recolours nodes and performs at most three rotations; may
+     *   change the root reference.
+     *
+     * Time complexity: O(log n) worst case, dominated by case 2 walking upwards
+     * one level at a time. At most three rotations are performed in total.
+     * Space complexity: O(1); the repair is iterative.
+     *
+     * @param pDeficient
+     * The node carrying the black-count deficit, which is the node that moved
+     * into the detached position. May be the sentinel.
+     */
+    private void removeFixup(RBNode pDeficient) {
+        // Tracks the position of the deficit as it moves upwards through the
+        // tree.
+        RBNode currentNode = pDeficient;
+
+        /*
+         * A red node can absorb the deficit by being recoloured black at the end,
+         * and the root can discard it because removing one black from every path
+         * simultaneously leaves them equal. Either condition ends the repair.
+         */
+        while (currentNode != root && currentNode.color == Color.BLACK) {
+
+            if (currentNode == currentNode.parent.left) {
+                // Left-hand form: the deficit is on the left, so the sibling is
+                // the parent's right child.
+                RBNode sibling = currentNode.parent.right;
+
+                if (sibling.color == Color.RED) {
+                    /*
+                     * Case 1: a red sibling implies a black parent. Exchanging
+                     * their colours and rotating brings a black node into the
+                     * sibling position without altering any black count, which
+                     * reduces this to one of the black-sibling cases below.
+                     */
+                    sibling.color = Color.BLACK;
+                    currentNode.parent.color = Color.RED;
+                    rotateLeft(currentNode.parent);
+                    sibling = currentNode.parent.right;
+                }
+
+                if (sibling.left.color == Color.BLACK
+                        && sibling.right.color == Color.BLACK) {
+                    /*
+                     * Case 2: the sibling has no red child to borrow from.
+                     * Removing one black from the sibling side equalises the two
+                     * sides beneath the parent, at the cost of making the
+                     * parent's entire subtree one black short. The deficit
+                     * therefore moves up to the parent.
+                     */
+                    sibling.color = Color.RED;
+                    currentNode = currentNode.parent;
+                } else {
+                    if (sibling.right.color == Color.BLACK) {
+                        /*
+                         * Case 3: the only red child is on the inner side, where
+                         * the final rotation cannot make use of it. Rotating at
+                         * the sibling moves it to the outer side and produces the
+                         * shape case 4 requires.
+                         */
+                        sibling.left.color = Color.BLACK;
+                        sibling.color = Color.RED;
+                        rotateRight(sibling);
+                        sibling = currentNode.parent.right;
+                    }
+
+                    /*
+                     * Case 4: the sibling's outer child is red. Rotating at the
+                     * parent moves a black node onto the deficient side and the
+                     * recolouring keeps every other path's black count intact.
+                     * The deficit is now discharged, so the cursor is set to the
+                     * root to terminate the loop.
+                     */
+                    sibling.color = currentNode.parent.color;
+                    currentNode.parent.color = Color.BLACK;
+                    sibling.right.color = Color.BLACK;
+                    rotateLeft(currentNode.parent);
+                    currentNode = root;
+                }
+            } else {
+                // Right-hand form: exact mirror image of the above, with left and
+                // right exchanged throughout.
+                RBNode sibling = currentNode.parent.left;
+
+                if (sibling.color == Color.RED) {
+                    // Case 1, mirrored.
+                    sibling.color = Color.BLACK;
+                    currentNode.parent.color = Color.RED;
+                    rotateRight(currentNode.parent);
+                    sibling = currentNode.parent.left;
+                }
+
+                if (sibling.right.color == Color.BLACK
+                        && sibling.left.color == Color.BLACK) {
+                    // Case 2, mirrored.
+                    sibling.color = Color.RED;
+                    currentNode = currentNode.parent;
+                } else {
+                    if (sibling.left.color == Color.BLACK) {
+                        // Case 3, mirrored.
+                        sibling.right.color = Color.BLACK;
+                        sibling.color = Color.RED;
+                        rotateLeft(sibling);
+                        sibling = currentNode.parent.left;
+                    }
+
+                    // Case 4, mirrored.
+                    sibling.color = currentNode.parent.color;
+                    currentNode.parent.color = Color.BLACK;
+                    sibling.left.color = Color.BLACK;
+                    rotateRight(currentNode.parent);
+                    currentNode = root;
+                }
+            }
+        }
+
+        /*
+         * Discharge the remaining deficit. When the loop ended on a red node,
+         * colouring it black absorbs the missing black exactly. When it ended at
+         * the root, the assignment is harmless because the root is black anyway.
+         */
+        currentNode.color = Color.BLACK;
+    }
 }
