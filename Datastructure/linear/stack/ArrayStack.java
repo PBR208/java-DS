@@ -24,6 +24,13 @@ package linear.stack;
  * corrupts the size counter and the backing array; external synchronisation is
  * required whenever instances are shared across threads.
  *
+ * Complexity summary, with n as the number of stored elements:
+ * - push: O(1) amortised, O(n) on the call that triggers a growth step
+ * - pop: O(1) amortised, O(n) on the call that triggers a shrink step
+ * - top, isEmpty, size, capacity: O(1) in every case
+ * - overall space: O(n), with the backing array bounded to at most four times
+ *   the element count by the shrink strategy
+ *
  * @author PBR208 - https://github.com/PBR208
  * @version 1.0
  *

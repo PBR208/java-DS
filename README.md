@@ -25,7 +25,7 @@ The goal of this project is to:
 - [x] Singly Linked List  
 - [x] Doubly Linked List  
 - [ ] Circular Linked List  
-- [ ] Stack (Array-based)  
+- [x] Stack (Array-based)  
 - [x] Stack (Linked List-based)  
 - [ ] Queue (Array-based)  
 - [x] Queue (Linked List-based)  
