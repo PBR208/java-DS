@@ -233,4 +233,93 @@ public class PriorityQueue<ContentType> {
     // The size counter is the single source of truth for the element count.
     return size;
   }
+
+  /**
+   * Inserts an element under the given priority.
+   *
+   * This operation carries the entire cost of the structure. It walks the chain
+   * to find the position dictated by the priority and links the new node there,
+   * so that the sorted invariant holds again when the method returns. Because
+   * the invariant is restored on every insertion, removal never has to search.
+   *
+   * Among elements of equal priority the new one is placed behind those already
+   * present, which is what gives the queue its FIFO stability for equal
+   * urgencies. The alternative of inserting in front of equals would be slightly
+   * cheaper, since the traversal could stop one comparison earlier, but it would
+   * let a steady stream of equally urgent work indefinitely postpone the items
+   * that arrived first.
+   *
+   * Null elements leave the queue unchanged instead of raising an exception.
+   * This mirrors the behaviour of the other linear structures in this library
+   * and keeps null out of the chain entirely, which is precisely what allows
+   * front and frontPriority to use null unambiguously as their empty-queue
+   * signal.
+   *
+   * Time complexity: O(n) worst case, when the new element is the least urgent
+   * and the traversal reaches the end of the chain. Inserting an element that is
+   * more urgent than everything stored is O(1), which makes a descending
+   * sequence of priorities the best case and an ascending one the worst.
+   * Space complexity: O(1) - exactly one node is allocated per stored element,
+   * and the traversal itself uses a single cursor reference.
+   *
+   * @param pContent
+   * Element to store. May be any ContentType instance; passing null is tolerated
+   * and silently ignored, so callers that must distinguish "stored nothing" from
+   * "stored a value" have to check for null before calling.
+   *
+   * @param pPriority
+   * Urgency of the element, where a numerically smaller value is served earlier.
+   * Any int value is valid, including zero and negative values, so that costs,
+   * distances or timestamps can be passed through unmodified. Equal values are
+   * permitted and resolve to insertion order.
+   */
+  public void enqueue(ContentType pContent, int pPriority) {
+    // Reject null early: storing it would break the contract of front, which
+    // reports an empty queue by returning null.
+    if (pContent == null) {
+      return;
+    }
+
+    // Build the node detached from the chain, so that a node whose position has
+    // not been determined yet is never reachable from the queue.
+    PriorityQueueNode newNode = new PriorityQueueNode(pContent, pPriority);
+
+    if (isEmpty() || pPriority < head.getPriority()) {
+      /*
+       * Front insertion, covering two cases that need the same handling:
+       * 1. The queue is empty, so the new node is trivially the most urgent.
+       * 2. The new element outranks the current front, which is the only
+       *    situation in which the head reference itself has to change.
+       * The comparison is strict, so an element of equal priority to the current
+       * front does not displace it and instead falls through to the traversal.
+       */
+      newNode.setNext(head);
+      head = newNode;
+    } else {
+      /*
+       * Locate the insertion point by walking forward while the following node
+       * is at least as urgent as the new element:
+       * - Inputs: a non-empty chain sorted by ascending priority, and a new
+       *   element that is known not to outrank the front.
+       * - The cursor stops on the last node that must still precede the new one.
+       * - Using "less than or equal" as the continue condition is what places
+       *   the new element behind its equals and therefore preserves arrival
+       *   order among them.
+       */
+      PriorityQueueNode currentNode = head;
+
+      while (currentNode.getNext() != null
+          && currentNode.getNext().getPriority() <= pPriority) {
+        currentNode = currentNode.getNext();
+      }
+
+      // Splice the new node in behind the cursor. The former successor is
+      // reattached first so that no element is dropped out of the chain.
+      newNode.setNext(currentNode.getNext());
+      currentNode.setNext(newNode);
+    }
+
+    // Account for the inserted element.
+    size++;
+  }
 }
