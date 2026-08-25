@@ -29,6 +29,13 @@ package linear.deque;
  * chain; external synchronisation is required whenever instances are shared
  * across threads.
  *
+ * Complexity summary, with n as the number of stored elements:
+ * - addFirst, addLast, removeFirst, removeLast: O(1) worst case, not merely
+ *   amortised, because nothing is ever shifted, copied or reallocated
+ * - first, last, isEmpty, size: O(1) in every case
+ * - overall space: O(n), at a cost of one node with two neighbour references
+ *   per stored element
+ *
  * @author PBR208 - https://github.com/PBR208
  * @version 1.0
  *

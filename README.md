@@ -29,7 +29,7 @@ The goal of this project is to:
 - [x] Stack (Linked List-based)  
 - [x] Queue (Array-based)  
 - [x] Queue (Linked List-based)  
-- [ ] Deque  
+- [x] Deque  
 - [ ] Priority Queue (Custom Implementation)
 
 ---
