@@ -1227,4 +1227,332 @@ public class RedBlackTree<ContentType extends ComparableContent<ContentType>> {
          */
         currentNode.color = Color.BLACK;
     }
+
+    /**
+     * Initiates an in-order (left, root, right) traversal of this tree, printing
+     * each visited node's content.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides a public entry point for in-order traversal without
+     *   requiring the caller to interact with internal node references.
+     * - Business context: In-order traversal of a binary search tree yields the
+     *   stored values in ascending order, which makes this the natural way to
+     *   inspect the contents and the simplest external check that the ordering
+     *   invariant survived a sequence of rotations.
+     * - Processing steps: Delegates to the private recursive helper, passing this
+     *   tree's root as the starting point.
+     * - Assumptions: Assumes the root field accurately reflects the current tree
+     *   structure.
+     * - Side effects: Produces console output via the visit method for every node
+     *   in the tree, in ascending sorted order.
+     *
+     * Time complexity: O(n); every node is visited exactly once.
+     * Space complexity: O(log n) for the recursion stack, bounded by the height,
+     * which the colour invariants keep logarithmic.
+     */
+    public void inOrder() {
+        inOrderRec(root);
+    }
+
+    /**
+     * Recursively performs an in-order (left, root, right) traversal starting
+     * from the specified node.
+     *
+     * Detailed explanation of:
+     * - Purpose: Implements the recursive descent underlying the public inOrder
+     *   method, visiting each node in left-root-right sequence.
+     * - Business context: Supports diagnostic output and any consumer requiring
+     *   values in sorted sequence.
+     * - Processing steps: Returns immediately at the sentinel, which is the base
+     *   case marking an empty subtree. Otherwise recurses left, visits the
+     *   current node, then recurses right.
+     * - Assumptions: None beyond a well-formed tree structure.
+     * - Side effects: Produces console output for every visited node; consumes
+     *   call stack space proportional to the height.
+     *
+     * @param pCurrent
+     * The node from which to begin the traversal. The sentinel terminates the
+     * recursion.
+     */
+    private void inOrderRec(RBNode pCurrent) {
+        // Base case: a leaf position contributes nothing to the traversal. The
+        // sentinel takes the role that null plays in a null-terminated tree.
+        if (pCurrent == nil) {
+            return;
+        }
+
+        // Process the entire left subtree before the current node, which is what
+        // produces ascending order.
+        inOrderRec(pCurrent.left);
+
+        // Visit the current node once everything smaller has been emitted.
+        visit(pCurrent.content);
+
+        // Process the right subtree last.
+        inOrderRec(pCurrent.right);
+    }
+
+    /**
+     * Initiates a pre-order (root, left, right) traversal of this tree, printing
+     * each visited node's content.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides a public entry point for pre-order traversal.
+     * - Business context: Pre-order visits a parent before its children, which is
+     *   the order required when reconstructing or serialising the tree shape.
+     *   For a red-black tree it is also the most useful order for inspecting the
+     *   effect of a rotation, since it reveals the structure rather than only the
+     *   sorted contents.
+     * - Processing steps: Delegates to the private recursive helper, passing the
+     *   root as the starting point.
+     * - Assumptions: Assumes the root field accurately reflects the current tree
+     *   structure.
+     * - Side effects: Produces console output for every node, in pre-order
+     *   sequence.
+     *
+     * Time complexity: O(n); every node is visited exactly once.
+     * Space complexity: O(log n) for the recursion stack.
+     */
+    public void preOrder() {
+        preOrderRec(root);
+    }
+
+    /**
+     * Recursively performs a pre-order (root, left, right) traversal starting
+     * from the specified node.
+     *
+     * Detailed explanation of:
+     * - Purpose: Implements the recursive descent underlying the public preOrder
+     *   method.
+     * - Business context: Supports algorithms and diagnostic output that require
+     *   nodes to be processed before their descendants.
+     * - Processing steps: Returns immediately at the sentinel. Otherwise visits
+     *   the current node first, then recurses left, then right.
+     * - Assumptions: None beyond a well-formed tree structure.
+     * - Side effects: Produces console output for every visited node; consumes
+     *   call stack space proportional to the height.
+     *
+     * @param pCurrent
+     * The node from which to begin the traversal. The sentinel terminates the
+     * recursion.
+     */
+    private void preOrderRec(RBNode pCurrent) {
+        // Base case: a leaf position contributes nothing to the traversal.
+        if (pCurrent == nil) {
+            return;
+        }
+
+        // Visit the current node before descending, satisfying the root-first
+        // sequence.
+        visit(pCurrent.content);
+
+        // Descend into both subtrees, left first.
+        preOrderRec(pCurrent.left);
+        preOrderRec(pCurrent.right);
+    }
+
+    /**
+     * Initiates a post-order (left, right, root) traversal of this tree, printing
+     * each visited node's content.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides a public entry point for post-order traversal.
+     * - Business context: Post-order visits both children before their parent,
+     *   which is the order required whenever a node may only be processed once
+     *   everything below it has been dealt with, such as when releasing an
+     *   entire subtree.
+     * - Processing steps: Delegates to the private recursive helper, passing the
+     *   root as the starting point.
+     * - Assumptions: Assumes the root field accurately reflects the current tree
+     *   structure.
+     * - Side effects: Produces console output for every node, in post-order
+     *   sequence.
+     *
+     * Time complexity: O(n); every node is visited exactly once.
+     * Space complexity: O(log n) for the recursion stack.
+     */
+    public void postOrder() {
+        postOrderRec(root);
+    }
+
+    /**
+     * Recursively performs a post-order (left, right, root) traversal starting
+     * from the specified node.
+     *
+     * Detailed explanation of:
+     * - Purpose: Implements the recursive descent underlying the public
+     *   postOrder method.
+     * - Business context: Supports processing in which a parent may only be
+     *   handled after its entire subtree has been handled.
+     * - Processing steps: Returns immediately at the sentinel. Otherwise recurses
+     *   into both children before visiting the current node.
+     * - Assumptions: None beyond a well-formed tree structure.
+     * - Side effects: Produces console output for every visited node; consumes
+     *   call stack space proportional to the height.
+     *
+     * @param pCurrent
+     * The node from which to begin the traversal. The sentinel terminates the
+     * recursion.
+     */
+    private void postOrderRec(RBNode pCurrent) {
+        // Base case: a leaf position contributes nothing to the traversal.
+        if (pCurrent == nil) {
+            return;
+        }
+
+        // Both subtrees are fully processed before the current node is visited.
+        postOrderRec(pCurrent.left);
+        postOrderRec(pCurrent.right);
+
+        visit(pCurrent.content);
+    }
+
+    /**
+     * Outputs a single visited content value.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the concrete visiting action invoked by each traversal
+     *   method when a node is reached.
+     * - Business context: Serves as a diagnostic mechanism for observing
+     *   traversal order and tree contents, and represents the single point of
+     *   customisation if visiting behaviour were to be extended later, for
+     *   example to write into a collector instead of the console. The traversals
+     *   of the AvlTree in this package are built the same way, so the two
+     *   structures can be compared by observing identical output.
+     * - Processing steps: Prints the supplied content to standard output.
+     * - Assumptions: Assumes the ContentType's toString representation produces
+     *   meaningful diagnostic output.
+     * - Side effects: Writes a line to the standard console stream.
+     *
+     * @param pContent
+     * The content value to output. May be any value of type ContentType,
+     * including null, since println handles null arguments safely.
+     */
+    private void visit(ContentType pContent) {
+        System.out.println(pContent);
+    }
+
+    /**
+     * Returns the black height of this tree.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes the quantity that the balancing discipline actually
+     *   keeps constant, namely the number of black nodes on the path from the
+     *   root down to any leaf position. Every such path has the same count, so
+     *   measuring one of them measures all of them.
+     * - Business context: This accessor exists for the same diagnostic reason as
+     *   the getHeight and getBalanceFactor accessors of the AvlTree in this
+     *   package: it lets a caller observe the invariant that the implementation
+     *   is maintaining, which is essential when the structure is used to learn
+     *   from rather than merely to store data. It also gives a caller a cheap way
+     *   to confirm that a long sequence of removals has not silently corrupted
+     *   the balance.
+     * - Processing steps: Walks the leftmost path from the root to a leaf,
+     *   counting black nodes. The leftmost path is chosen arbitrarily; the
+     *   equal-black-count property guarantees any other path yields the same
+     *   answer.
+     * - Assumptions: Assumes the colour invariants currently hold, which every
+     *   public mutating operation re-establishes before returning.
+     * - Side effects: None; this method only reads the structure.
+     *
+     * Time complexity: O(log n); a single root-to-leaf descent.
+     * Space complexity: O(1); the descent is iterative.
+     *
+     * @return
+     * The number of black nodes on any path from the root to a leaf position,
+     * counting the root when it is black and not counting the leaf sentinel
+     * itself. Zero for an empty tree.
+     */
+    public int getBlackHeight() {
+        // Counts the black nodes encountered on the way down.
+        int blackHeight = 0;
+
+        // Any root-to-leaf path carries the same count, so the leftmost one is
+        // as good as any other.
+        RBNode currentNode = root;
+
+        while (currentNode != nil) {
+            // Only black nodes contribute; red nodes are transparent with
+            // respect to this measure, which is precisely why they are allowed
+            // to appear in differing numbers along different paths.
+            if (currentNode.color == Color.BLACK) {
+                blackHeight++;
+            }
+
+            currentNode = currentNode.left;
+        }
+
+        return blackHeight;
+    }
+
+    /**
+     * Returns the height of this tree, measured in nodes along the longest
+     * root-to-leaf path.
+     *
+     * Detailed explanation of:
+     * - Purpose: Reports the actual height, as opposed to the black height, so
+     *   that a caller can confirm the bound the colour invariants are supposed to
+     *   guarantee: a red-black tree holding n values never exceeds a height of
+     *   2*log2(n+1).
+     * - Business context: The height is the quantity a user of the structure
+     *   ultimately cares about, since it determines the cost of every search.
+     *   Exposing it makes the difference between this structure and an
+     *   unbalanced binary search tree directly observable, which is the point of
+     *   keeping both in this library.
+     * - Processing steps: Recursively computes one plus the greater of the two
+     *   subtree heights, treating a leaf position as height zero.
+     * - Assumptions: None beyond a well-formed tree structure.
+     * - Side effects: None; this method only reads the structure.
+     *
+     * Time complexity: O(n); every node must be inspected, because the height is
+     * not cached. This differs deliberately from the AvlTree, which maintains a
+     * height field per node because its balancing decisions depend on it; the
+     * red-black discipline needs no such field, and introducing one solely for
+     * this diagnostic accessor would add per-node cost to every update.
+     * Space complexity: O(log n) for the recursion stack.
+     *
+     * @return
+     * Number of nodes on the longest path from the root to a leaf position. Zero
+     * for an empty tree, one for a tree holding a single value.
+     */
+    public int getHeight() {
+        return heightRec(root);
+    }
+
+    /**
+     * Recursively computes the height of the subtree rooted at the specified
+     * node.
+     *
+     * Detailed explanation of:
+     * - Purpose: Implements the recursive measurement underlying the public
+     *   getHeight accessor.
+     * - Business context: Supports the diagnostic height query without requiring
+     *   any per-node bookkeeping during insertion and removal.
+     * - Processing steps: Returns zero at the sentinel, which is the base case
+     *   representing an absent subtree. Otherwise returns one more than the
+     *   larger of the two child subtree heights.
+     * - Assumptions: None beyond a well-formed tree structure.
+     * - Side effects: None; consumes call stack space proportional to the height.
+     *
+     * @param pCurrent
+     * Root of the subtree to measure. The sentinel yields zero.
+     *
+     * @return
+     * Number of nodes on the longest path from the supplied node down to a leaf
+     * position.
+     */
+    private int heightRec(RBNode pCurrent) {
+        // Base case: an absent subtree contributes no levels.
+        if (pCurrent == nil) {
+            return 0;
+        }
+
+        // Measure both subtrees and keep the deeper one, since the height is
+        // defined by the longest path.
+        int leftHeight = heightRec(pCurrent.left);
+        int rightHeight = heightRec(pCurrent.right);
+
+        // Add the current level to the deeper of the two subtrees.
+        return 1 + Math.max(leftHeight, rightHeight);
+    }
 }
