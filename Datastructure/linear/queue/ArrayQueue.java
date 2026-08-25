@@ -336,4 +336,58 @@ public class ArrayQueue<ContentType> {
     // of the queue now sits at the natural beginning of the array again.
     head = 0;
   }
+
+  /**
+   * Removes the element at the front of the queue.
+   *
+   * Calling this method on an empty queue performs no action instead of raising
+   * an underflow exception, matching the defensive contract of the node-based
+   * {@link Queue} in this package. Callers that need to inspect the element
+   * before discarding it must read it through front first, because this method
+   * intentionally does not return the removed value.
+   *
+   * Removal never moves the remaining elements. Only the head index advances,
+   * which is the whole reason the backing array is managed as a ring; shifting
+   * the survivors towards index zero would turn this into a linear operation.
+   * The vacated slot is cleared and the ring is shrunk once it becomes mostly
+   * empty, so that a queue which grew large during a burst of traffic does not
+   * keep that memory reserved for the remaining lifetime of the object.
+   *
+   * Time complexity: O(1) amortised, O(n) worst case. Only the calls that cross
+   * the quarter-capacity threshold copy the remaining n elements, and the gap
+   * between the shrink and growth thresholds guarantees that no alternating
+   * sequence of enqueues and dequeues can trigger those copies repeatedly.
+   * Space complexity: O(1) amortised. A shrink step briefly holds both arrays,
+   * making peak usage during that step O(n).
+   */
+  public void dequeue() {
+    // Underflow is treated as a no-op so that callers can drain the queue in a
+    // loop without wrapping every call in an emptiness check.
+    if (isEmpty()) {
+      return;
+    }
+
+    // Clear the departing slot before moving on. Without this the array would
+    // keep a strong reference to a logically removed element and prevent its
+    // collection, the loitering effect that makes naive ring buffers retain
+    // memory long after the element was consumed.
+    elements[head] = null;
+
+    // Advance the front position, wrapping back to index zero at the end of the
+    // array so that the freed slot can be reused by a later enqueue.
+    head = (head + 1) % elements.length;
+
+    // Account for the removal; the tail position derived by enqueue depends on
+    // this counter staying in step with the head index.
+    size--;
+
+    // Shrink only once the ring is mostly empty. Reacting already at half
+    // capacity would let an alternating enqueue/dequeue sequence resize on every
+    // call.
+    if (size > 0 && size <= elements.length / SHRINK_THRESHOLD_DIVISOR) {
+      // Halve the storage rather than trimming to the exact element count, which
+      // leaves headroom for subsequent enqueues and keeps the cost amortised.
+      resize(elements.length / GROWTH_FACTOR);
+    }
+  }
 }
