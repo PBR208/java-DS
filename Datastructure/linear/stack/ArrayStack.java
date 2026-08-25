@@ -338,4 +338,34 @@ public class ArrayStack<ContentType> {
       resize(elements.length / GROWTH_FACTOR);
     }
   }
+
+  /**
+   * Returns the element at the top of the stack without removing it.
+   *
+   * This is the read half of the read-then-discard pattern that the API imposes:
+   * because pop returns nothing, consumers inspect the top element here and only
+   * afterwards remove it. The stack is left completely unmodified by this call,
+   * so repeated invocations always yield the same element.
+   *
+   * Time complexity: O(1) - a single indexed read, with no resizing involved.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * The most recently pushed element that has not been removed yet, or null when
+   * the stack is empty. Null is unambiguous as an empty-stack marker because
+   * push refuses to store null elements.
+   */
+  @SuppressWarnings("unchecked")
+  public ContentType top() {
+    // An empty stack has no top element; report that through null instead of
+    // letting the index calculation below run out of bounds.
+    if (isEmpty()) {
+      return null;
+    }
+
+    // The top element occupies the highest used index. The cast is safe despite
+    // the erased array type because push is the only writer into this array and
+    // it accepts ContentType instances exclusively.
+    return (ContentType) elements[size - 1];
+  }
 }
