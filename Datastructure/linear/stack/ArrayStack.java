@@ -144,4 +144,69 @@ public class ArrayStack<ContentType> {
     // index zero.
     size = 0;
   }
+
+  /**
+   * Checks whether the stack currently holds any elements.
+   *
+   * This is the guard clause callers are expected to use before reading or
+   * removing the top element, because both of those operations are defined to
+   * fail silently on an empty stack rather than to raise an exception. Emptiness
+   * is decided by the logical size alone and is independent of the capacity of
+   * the backing array, which may still be large after many removals.
+   *
+   * Time complexity: O(1) - a single counter comparison.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * True when no element is stored, false as soon as at least one element has
+   * been pushed and not yet removed.
+   */
+  public boolean isEmpty() {
+    // The backing array is never null and retains capacity after removals, so
+    // only the logical size is a valid emptiness criterion here.
+    return size == 0;
+  }
+
+  /**
+   * Returns the number of elements currently stored in the stack.
+   *
+   * The value is maintained incrementally by push and pop, so no traversal is
+   * required to obtain it. This accessor mainly supports callers that must size
+   * an output buffer or report progress; the core LIFO workflow does not depend
+   * on it.
+   *
+   * Time complexity: O(1) - the count is maintained incrementally rather than
+   * derived by traversal.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * Element count between zero and the current capacity, never negative.
+   */
+  public int size() {
+    // The size counter is the single source of truth for the element count.
+    return size;
+  }
+
+  /**
+   * Returns the number of elements the backing array can hold before the next
+   * growth step.
+   *
+   * This is diagnostic information rather than part of the stack contract: the
+   * value changes on its own as the structure resizes, and callers must not
+   * treat it as an upper bound on how many elements they may push. It is exposed
+   * because observing the growth and shrink behaviour is a central learning goal
+   * of this reference implementation.
+   *
+   * Time complexity: O(1) - a direct array length read.
+   * Space complexity: O(1) - no auxiliary storage.
+   *
+   * @return
+   * Current length of the backing array, always at least the internal minimum
+   * capacity and always greater than or equal to the current size.
+   */
+  public int capacity() {
+    // Report the physical storage size, which the resize strategy adjusts
+    // independently of the logical element count.
+    return elements.length;
+  }
 }
