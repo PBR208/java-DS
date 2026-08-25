@@ -340,4 +340,104 @@ public class Deque<ContentType> {
     // appending at the back never changes the front.
     size++;
   }
+
+  /**
+   * Removes the element at the front of the deque.
+   *
+   * Calling this method on an empty deque performs no action instead of raising
+   * an underflow exception, matching the defensive contract of the other linear
+   * structures in this library. Callers that need to inspect the element before
+   * discarding it must read it through first, because this method intentionally
+   * does not return the removed value.
+   *
+   * The detached node is left with its outgoing reference cleared. That is not
+   * required for correctness of the deque itself, but it prevents a caller who
+   * still holds a reference to the removed node from reaching the elements that
+   * remain in the structure, and it avoids keeping a whole chain of removed
+   * nodes alive through a single stale reference.
+   *
+   * Time complexity: O(1) - a fixed number of reference updates at the front.
+   * Space complexity: O(1) - no auxiliary storage; the detached node becomes
+   * eligible for garbage collection.
+   */
+  public void removeFirst() {
+    // Underflow is treated as a no-op so that callers can drain the deque in a
+    // loop without wrapping every call in an emptiness check.
+    if (isEmpty()) {
+      return;
+    }
+
+    // Remember the node being detached so its links can be cleared afterwards.
+    DequeNode removedNode = head;
+
+    // Advance the front to the successor of the removed node.
+    head = head.getNext();
+
+    if (head == null) {
+      // The removed node was the only element. The deque is now empty, so the
+      // back reference has to be cleared as well; leaving it pointing at the
+      // detached node would resurrect that element on the next addLast.
+      tail = null;
+    } else {
+      // The new front has no predecessor by definition. Clearing this link is
+      // what actually detaches the removed node from the surviving chain.
+      head.setPrevious(null);
+    }
+
+    // Cut the forward link of the detached node so that it cannot be used as a
+    // path back into the deque.
+    removedNode.setNext(null);
+
+    // Account for the removal.
+    size--;
+  }
+
+  /**
+   * Removes the element at the back of the deque.
+   *
+   * This is the operation that a singly linked representation could not provide
+   * in constant time, and therefore the reason this class maintains a
+   * predecessor reference in every node: the new back is read directly from the
+   * removed node instead of being located by traversing the chain from the
+   * front.
+   *
+   * As with removeFirst, an empty deque is left unchanged rather than signalling
+   * underflow, and the removed value is not returned; callers read it through
+   * last beforehand if they need it.
+   *
+   * Time complexity: O(1) - a fixed number of reference updates at the back,
+   * where a singly linked chain would require O(n) to find the new back.
+   * Space complexity: O(1) - no auxiliary storage; the detached node becomes
+   * eligible for garbage collection.
+   */
+  public void removeLast() {
+    // Underflow is treated as a no-op, matching removeFirst.
+    if (isEmpty()) {
+      return;
+    }
+
+    // Remember the node being detached so its links can be cleared afterwards.
+    DequeNode removedNode = tail;
+
+    // Step the back reference to the predecessor of the removed node. This is
+    // the constant-time step that the doubly linked representation exists for.
+    tail = tail.getPrevious();
+
+    if (tail == null) {
+      // The removed node was the only element, so the front reference has to be
+      // cleared as well to restore the consistent empty state.
+      head = null;
+    } else {
+      // The new back has no successor by definition; clearing this link detaches
+      // the removed node from the surviving chain.
+      tail.setNext(null);
+    }
+
+    // Cut the backward link of the detached node so that it cannot be used as a
+    // path back into the deque.
+    removedNode.setPrevious(null);
+
+    // Account for the removal.
+    size--;
+  }
 }
