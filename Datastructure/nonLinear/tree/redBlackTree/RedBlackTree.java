@@ -290,4 +290,165 @@ public class RedBlackTree<ContentType extends ComparableContent<ContentType>> {
         // No content values are stored yet.
         size = 0;
     }
+
+    /**
+     * Determines whether this tree currently contains no elements.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides a way to check whether the tree holds any content
+     *   without requiring the caller to know that emptiness is represented by a
+     *   root pointing at the sentinel rather than by a null root.
+     * - Business context: Used by traversal and query methods, and by callers
+     *   draining the tree, to guard against operating on an empty structure.
+     * - Processing steps: Compares the root reference against the sentinel.
+     * - Assumptions: Assumes the root field is never null, which the constructor
+     *   establishes and which every mutating operation preserves.
+     * - Side effects: None; this method does not modify internal state.
+     *
+     * @return
+     * True if this tree currently holds no elements; false if at least one
+     * content value is present.
+     */
+    public boolean isEmpty() {
+        // Emptiness is represented by the root referring to the sentinel, which
+        // is why this is a sentinel comparison rather than a null check.
+        return root == nil;
+    }
+
+    /**
+     * Returns the number of content values currently stored in this tree.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes the element count without requiring a traversal, and
+     *   provides the quantity against which this structure's logarithmic height
+     *   guarantee is expressed.
+     * - Business context: Callers use the count to report occupancy, to size
+     *   output buffers before an in-order traversal, or to verify that the
+     *   height bound of 2*log2(n+1) actually holds for the stored population.
+     * - Processing steps: Returns the incrementally maintained counter.
+     * - Assumptions: Assumes insert and remove keep the counter in step with the
+     *   actual node population, which they do by adjusting it only on the paths
+     *   that genuinely add or detach a node.
+     * - Side effects: None; this method does not modify internal state.
+     *
+     * @return
+     * Element count, zero for an empty tree and never negative. The sentinel is
+     * not counted, since it represents the absence of a node rather than a
+     * stored value.
+     */
+    public int size() {
+        // The counter is the single source of truth for the element count.
+        return size;
+    }
+
+    /**
+     * Searches the tree for a value considered equal to the supplied content and
+     * returns the stored instance.
+     *
+     * Detailed explanation of:
+     * - Purpose: Retrieves the instance actually held by the tree, which may be
+     *   a different object than the one supplied as the search key while still
+     *   comparing equal under the ContentType ordering. This matters whenever
+     *   the content carries a payload beyond the fields used for ordering, which
+     *   is the normal case for a keyed record.
+     * - Business context: Serves as the primary read entry point of the
+     *   structure; the whole balancing machinery exists to keep this operation
+     *   logarithmic regardless of insertion order.
+     * - Processing steps: Delegates to the private descent helper and translates
+     *   its sentinel result into null, so that the public contract can be
+     *   expressed without reference to the internal representation.
+     * - Assumptions: Assumes the ordering comparisons of ContentType form a
+     *   consistent total order; if they do not, the descent may take a wrong
+     *   branch and fail to find a value that is in fact stored.
+     * - Side effects: None; searching does not modify the tree.
+     *
+     * Time complexity: O(log n), because the colour invariants bound the height
+     * at 2*log2(n+1) and the descent visits at most one node per level.
+     * Space complexity: O(1); the descent is iterative and allocates nothing.
+     *
+     * @param pContent
+     * The search key. Must not be null; a null key is answered with null rather
+     * than being compared, since the ordering methods cannot be invoked on it.
+     * Only the fields participating in the ordering comparisons are relevant.
+     *
+     * @return
+     * The content instance stored in this tree that compares equal to pContent,
+     * or null when no such value is present or when pContent itself is null.
+     */
+    public ContentType search(ContentType pContent) {
+        // A null key cannot be compared against stored content, so report "not
+        // found" rather than raising an exception, consistent with the way the
+        // mutating operations tolerate null.
+        if (pContent == null) {
+            return null;
+        }
+
+        // Locate the node holding an equal value, if any.
+        RBNode foundNode = searchNode(pContent);
+
+        // Translate the internal sentinel result into the null that the public
+        // contract specifies for an unsuccessful search.
+        if (foundNode == nil) {
+            return null;
+        }
+
+        // Return the stored instance rather than the supplied key, since the two
+        // may compare equal while differing in their non-ordering fields.
+        return foundNode.content;
+    }
+
+    /**
+     * Locates the node holding a value equal to the supplied content.
+     *
+     * Detailed explanation of:
+     * - Purpose: Implements the shared binary search descent used by both the
+     *   public search method and the removal procedure, which needs the node
+     *   itself rather than the value it carries.
+     * - Business context: Concentrates the ordering-driven navigation in one
+     *   place, so that a change to the comparison semantics cannot leave search
+     *   and removal disagreeing about where a value lives.
+     * - Processing steps: Starts at the root and repeatedly compares the key
+     *   against the current node, descending left when the key is smaller and
+     *   right when it is larger, until either an equal value is found or the
+     *   descent reaches the sentinel.
+     * - Assumptions: Assumes isLess and isGreater are mutually exclusive and,
+     *   together with the equality case, form a total ordering consistent with
+     *   the one that governed insertion.
+     * - Side effects: None; this method only reads the structure.
+     *
+     * @param pContent
+     * The search key. Must not be null; the public entry points filter null out
+     * before delegating here.
+     *
+     * @return
+     * The node whose content compares equal to pContent, or the sentinel when no
+     * such node exists. The sentinel is returned rather than null so that callers
+     * can compare against it without a null check.
+     */
+    private RBNode searchNode(ContentType pContent) {
+        // Begin the descent at the root; for an empty tree this is already the
+        // sentinel and the loop below terminates immediately.
+        RBNode currentNode = root;
+
+        // Descend until the value is found or the search falls off a leaf.
+        while (currentNode != nil) {
+
+            if (pContent.isLess(currentNode.content)) {
+                // The key precedes the current node, so it can only be stored in
+                // the left subtree.
+                currentNode = currentNode.left;
+            } else if (pContent.isGreater(currentNode.content)) {
+                // The key follows the current node, so it can only be stored in
+                // the right subtree.
+                currentNode = currentNode.right;
+            } else {
+                // Neither less nor greater means the ordering considers the two
+                // values equal, which is the definition of a match here.
+                return currentNode;
+            }
+        }
+
+        // The descent reached a leaf position without finding an equal value.
+        return nil;
+    }
 }
