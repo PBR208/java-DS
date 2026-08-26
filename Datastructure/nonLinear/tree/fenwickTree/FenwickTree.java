@@ -709,4 +709,104 @@ public class FenwickTree<ContentType> {
         add(pIndex, delta);
     }
 
+    /**
+     * Reports the value currently stored at the specified position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Gives callers read access to a single position, which the tree
+     *   otherwise only ever exposes in aggregated form.
+     * - Business context: The tree keeps no copy of the sequence it represents,
+     *   and a position generally has no fragment of its own, so the value has to
+     *   be recovered by isolating the position as a range of width one. Callers
+     *   that read positions in bulk are better served by keeping the array they
+     *   built the tree from, and callers accumulating counters usually never need
+     *   this operation at all; it exists for the ones that derive their next write
+     *   from the current value.
+     * - Processing steps: Delegates to the range query over the single requested
+     *   position, which keeps the bounds validation and the walk in one place.
+     * - Assumptions: Assumes the caller accepts the logarithmic cost, which a
+     *   plain array would not charge.
+     * - Side effects: None; this operation only reads fragments.
+     *
+     * Time complexity: O(log n), being a range query of width one. This is the
+     * one operation on which a plain array is strictly better, answering in O(1),
+     * and the cost is the deliberate consequence of storing block aggregates
+     * rather than a second copy of the values.
+     * Space complexity: O(1); the underlying walks are iterative.
+     *
+     * @param pIndex
+     * Position to read. Must be non-negative and less than the number of covered
+     * positions.
+     *
+     * @return
+     * The value stored at that position, or null when the position lies outside
+     * the covered range, including every position of a tree covering none.
+     */
+    public ContentType get(int pIndex) {
+        /*
+         * A single position is a range of width one. Reusing the range query
+         * avoids a second walk that could drift from the first, at the price of
+         * one redundant prefix assembly, which is a fair trade in a structure
+         * whose value lies in aggregates rather than in single reads.
+         */
+        return range(pIndex, pIndex);
+    }
+
+    /**
+     * Reports how many positions the tree covers.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes the fixed length of the sequence, which bounds every
+     *   position accepted by the queries and the writes.
+     * - Business context: Callers commonly iterate over positions or ask for the
+     *   aggregate of the whole sequence, and both need this bound. It counts
+     *   positions, not fragments: the two happen to be equal here, which is the
+     *   memory advantage this structure holds over the segment tree, where a
+     *   position costs close to two cached aggregates.
+     * - Processing steps: Returns the count recorded at construction, which cannot
+     *   change afterwards because the block each slot stands for is derived from
+     *   it.
+     * - Assumptions: None.
+     * - Side effects: None; this operation only reads a field.
+     *
+     * Time complexity: O(1); the count is held as a field rather than derived from
+     * the fragment array.
+     * Space complexity: O(1).
+     *
+     * @return
+     * The number of covered positions, never negative. Zero exactly when the tree
+     * was constructed over no positions.
+     */
+    public int size() {
+        return size;
+    }
+
+    /**
+     * Reports whether the tree covers no positions at all.
+     *
+     * Detailed explanation of:
+     * - Purpose: Lets callers distinguish a tree that can answer questions from
+     *   one that cannot, without interpreting a null result.
+     * - Business context: An empty tree arises only from construction over a
+     *   length of zero and stays empty for its entire lifetime, since the
+     *   structure has no operation that adds positions. Checking this once is
+     *   therefore more meaningful than checking every answer for null. Note that
+     *   this reports the absence of positions, not the absence of accumulated
+     *   values: a tree over ten positions all holding the neutral element is not
+     *   empty in this sense, because all ten positions can be read and written.
+     * - Processing steps: Compares the recorded position count against zero.
+     * - Assumptions: None.
+     * - Side effects: None; this operation only reads a field.
+     *
+     * Time complexity: O(1); a single comparison.
+     * Space complexity: O(1).
+     *
+     * @return
+     * True when the tree covers no positions and every query and write is
+     * consequently without effect; false when at least one position is covered.
+     */
+    public boolean isEmpty() {
+        return size == 0;
+    }
+
 }
