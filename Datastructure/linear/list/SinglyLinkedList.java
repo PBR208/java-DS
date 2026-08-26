@@ -240,7 +240,7 @@ public class SinglyLinkedList<ContentType> {
    *
    * @param pList list to append
    */
-  public void concat(SinglyLinkedList pList) {
+  public void concat(SinglyLinkedList<ContentType> pList) {
     if (pList != this && pList != null && !pList.isEmpty()) {
 
       if (this.isEmpty()) {
