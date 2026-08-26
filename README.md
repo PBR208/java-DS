@@ -42,7 +42,7 @@ The goal of this project is to:
 - [x] Red-Black Tree  
 - [x] Heap (Min/Max Heap)  
 - [ ] Trie (Prefix Tree)  
-- [ ] Segment Tree  
+- [x] Segment Tree  
 - [ ] Fenwick Tree (Binary Indexed Tree)  
 - [ ] Disjoint Set (Union-Find)
 

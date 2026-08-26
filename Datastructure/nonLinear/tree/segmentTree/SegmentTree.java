@@ -65,6 +65,25 @@ package nonLinear.tree.segmentTree;
  * need not organise data by value at all: this one organises it by position and
  * stores derived answers rather than the elements themselves.
  *
+ * Complexity summary, with n as the number of covered positions:
+ * - construction: O(n) time, building every cached aggregate in one pass
+ * - query over an arbitrary range: O(log n)
+ * - update of a single position: O(log n)
+ * - get: O(log n)
+ * - size, isEmpty: O(1)
+ * - overall space: O(n); four node slots are reserved per position, of which
+ *   fewer than two per position are ever occupied
+ *
+ * The bound worth dwelling on is the one for query, because of what it does not
+ * mention: the width of the requested range. Aggregating a million positions
+ * costs no more than aggregating two, since a wide range is served by a handful
+ * of large cached nodes and a narrow one by a handful of small ones, and only the
+ * two ends of a range are ever decomposed down to the elements. The price is the
+ * linear build and the memory the cached aggregates occupy, which is why this
+ * structure pays off precisely when queries and updates are interleaved: a table
+ * of prefix aggregates beats it when nothing is ever written, and the bare array
+ * beats it when nothing is ever queried.
+ *
  * @param <ContentType>
  * The type of the stored elements and of the aggregates derived from them. No
  * ordering or comparison capability is required of this type; every operation on
@@ -159,6 +178,14 @@ public class SegmentTree<ContentType> {
      *   do not reach the tree; update is the only supported way to change a
      *   stored value.
      *
+     * Time complexity: O(n) in the number of positions. The validation pass and
+     * the build each touch every position once, and the build additionally
+     * performs one merge per internal node, of which a tree over n positions has
+     * fewer than n. Inserting the same elements one at a time would instead cost
+     * O(n log n), which is the reason this structure is built rather than filled.
+     * Space complexity: O(n) for the node array, plus O(log n) for the recursion
+     * stack, whose depth is the height of the tree.
+     *
      * @param pElements
      * The initial values, one per position, in the order the tree indexes them.
      * Must not be null and must not contain null. May be empty, which yields a
@@ -240,6 +267,9 @@ public class SegmentTree<ContentType> {
      *   method would compute for one addresses an unused slot.
      * - Side effects: None; this method is a pure computation.
      *
+     * Time complexity: O(1); a single arithmetic expression.
+     * Space complexity: O(1); nothing is allocated.
+     *
      * @param pNodeIndex
      * Index of the parent node. Must be non-negative.
      *
@@ -266,6 +296,9 @@ public class SegmentTree<ContentType> {
      * - Assumptions: Assumes the caller descends only into a node whose range
      *   holds more than one position.
      * - Side effects: None; this method is a pure computation.
+     *
+     * Time complexity: O(1); a single arithmetic expression.
+     * Space complexity: O(1); nothing is allocated.
      *
      * @param pNodeIndex
      * Index of the parent node. Must be non-negative.
@@ -295,6 +328,10 @@ public class SegmentTree<ContentType> {
      * - Assumptions: Assumes the range is non-empty and ordered, that is, that
      *   its start does not exceed its end.
      * - Side effects: None; this method is a pure computation.
+     *
+     * Time complexity: O(1); one subtraction, one shift-equivalent division and
+     * one addition.
+     * Space complexity: O(1); nothing is allocated.
      *
      * @param pRangeStart
      * First position of the range. Must be non-negative and must not exceed
@@ -327,6 +364,10 @@ public class SegmentTree<ContentType> {
      *   is guaranteed because the array is private, final and never handed out.
      *   The cast can therefore not fail at runtime.
      * - Side effects: None; this method only reads the array.
+     *
+     * Time complexity: O(1); one array read. The cast is erased at compile time
+     * and costs nothing at runtime.
+     * Space complexity: O(1); nothing is allocated.
      *
      * @param pNodeIndex
      * Index of the node to read. Must address a slot that a descent actually
@@ -363,6 +404,12 @@ public class SegmentTree<ContentType> {
      *   recursion can produce.
      * - Side effects: Writes to the node array throughout the subtree rooted at
      *   the given node.
+     *
+     * Time complexity: O(m) in the width of the range being built, since every
+     * node of that subtree is visited exactly once and each visit performs at
+     * most one merge; the call from the constructor therefore costs O(n).
+     * Space complexity: O(log m) for the recursion stack. No node is allocated
+     * here, because the node array was sized once in advance.
      *
      * @param pElements
      * The initial values being read into the leaves. Must not be null and must
@@ -429,6 +476,14 @@ public class SegmentTree<ContentType> {
      *   ranges are described throughout this class.
      * - Side effects: None; this operation only reads cached aggregates.
      *
+     * Time complexity: O(log n) in the number of covered positions, and notably
+     * independent of how wide the requested range is. At most two nodes per level
+     * are only partially covered by the range, since a partial overlap can occur
+     * only at its two ends, so the descent branches into at most four nodes per
+     * level and the level count is the height of the tree.
+     * Space complexity: O(log n) for the recursion stack; no result is
+     * materialised beyond the single aggregate being merged.
+     *
      * @param pFromIndex
      * First position of the range, inclusive. Must be non-negative and must not
      * exceed pToIndex.
@@ -492,6 +547,10 @@ public class SegmentTree<ContentType> {
      *   the covered positions by the public entry point, so the recursion is
      *   concerned only with overlap and never with legality.
      * - Side effects: None; this method only reads cached aggregates.
+     *
+     * Time complexity: O(log n) for the call from the root, by the per-level
+     * bound explained on the public entry point.
+     * Space complexity: O(log n) for the recursion stack.
      *
      * @param pNodeIndex
      * Index of the node currently visited.
@@ -592,6 +651,13 @@ public class SegmentTree<ContentType> {
      * - Side effects: Overwrites one leaf slot and rewrites the aggregate of each
      *   of its ancestors, leaving the rest of the node array untouched.
      *
+     * Time complexity: O(log n); the descent visits exactly one node per level
+     * and each of them performs at most one merge on the way back up. Rebuilding
+     * a table of prefix aggregates after the same change would cost O(n), which
+     * is the trade this structure exists to avoid.
+     * Space complexity: O(log n) for the recursion stack; nothing is allocated,
+     * since the value replaces an existing slot.
+     *
      * @param pIndex
      * Position whose value is replaced. Must be non-negative and less than the
      * number of positions the tree covers; an out-of-range position is silently
@@ -647,6 +713,9 @@ public class SegmentTree<ContentType> {
      *   the choice of branch at every step.
      * - Side effects: Writes to one leaf slot and to every node on the path from
      *   the root to it.
+     *
+     * Time complexity: O(log n) for the call from the root, one node per level.
+     * Space complexity: O(log n) for the recursion stack.
      *
      * @param pNodeIndex
      * Index of the node currently visited.
@@ -716,6 +785,12 @@ public class SegmentTree<ContentType> {
      *   is better served by retaining the array it built the tree from.
      * - Side effects: None; this operation only reads cached aggregates.
      *
+     * Time complexity: O(log n); the descent narrows to a leaf one level at a
+     * time. This is the one operation on which a plain array is strictly better,
+     * answering in O(1), and the cost is the deliberate consequence of storing
+     * derived aggregates instead of a second copy of the elements.
+     * Space complexity: O(log n) for the recursion stack.
+     *
      * @param pIndex
      * Position to read. Must be non-negative and less than the number of covered
      * positions.
@@ -751,6 +826,10 @@ public class SegmentTree<ContentType> {
      * - Assumptions: None.
      * - Side effects: None; this operation only reads a field.
      *
+     * Time complexity: O(1); the count is maintained as a field rather than
+     * derived from the node array.
+     * Space complexity: O(1).
+     *
      * @return
      * The number of covered positions, never negative. Zero exactly when the tree
      * was built from an empty array.
@@ -772,6 +851,9 @@ public class SegmentTree<ContentType> {
      * - Processing steps: Compares the recorded position count against zero.
      * - Assumptions: None.
      * - Side effects: None; this operation only reads a field.
+     *
+     * Time complexity: O(1); a single comparison.
+     * Space complexity: O(1).
      *
      * @return
      * True when the tree covers no positions and every query, update and get is

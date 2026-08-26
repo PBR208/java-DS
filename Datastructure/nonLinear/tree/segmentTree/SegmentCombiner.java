@@ -90,6 +90,15 @@ public interface SegmentCombiner<ContentType> {
      *   would silently serve stale answers if an implementation reported results
      *   that depend on anything other than its two arguments.
      *
+     * Time complexity: Determined entirely by the implementation. Every
+     * complexity figure documented on SegmentTree assumes a merge in O(1), which
+     * holds for the usual arithmetic and comparison aggregates; an implementation
+     * whose merge is more expensive multiplies those figures by its own cost, so
+     * an aggregate such as string concatenation, whose cost grows with the length
+     * of its operands, changes the bounds of the tree it is used with.
+     * Space complexity: Likewise determined by the implementation, and expected
+     * to be O(1) beyond the returned value.
+     *
      * @param pLeft
      * Aggregate of the range positioned further to the left. Never null, because
      * a segment tree neither stores nor propagates null aggregates, and it skips
