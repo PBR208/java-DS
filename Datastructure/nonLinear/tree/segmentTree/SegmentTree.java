@@ -568,4 +568,134 @@ public class SegmentTree<ContentType> {
         return combiner.combine(leftResult, rightResult);
     }
 
+    /**
+     * Replaces the value stored at the specified position and refreshes every
+     * aggregate that depended on it.
+     *
+     * Detailed explanation of:
+     * - Purpose: Keeps the cached aggregates consistent with the underlying
+     *   values after a single position changes.
+     * - Business context: Serves as the primary write entry point and is the
+     *   operation that distinguishes this structure from a precomputed table of
+     *   prefix aggregates. A position participates in exactly one cached range
+     *   per level of the tree, so only that one path has to be repaired, and the
+     *   remaining aggregates stay valid untouched. A prefix table, by contrast,
+     *   would have to recompute everything from the changed position onwards.
+     * - Processing steps:
+     *   1. Ignore a position outside the covered range and a null value, neither
+     *      of which describes a change the tree could apply.
+     *   2. Descend to the affected leaf, overwrite it, and recompute the
+     *      aggregate of every node on the way back up.
+     * - Assumptions: Assumes the caller intends a replacement rather than an
+     *   insertion. The tree covers a fixed number of positions, so a value can be
+     *   exchanged but no position can be added or removed.
+     * - Side effects: Overwrites one leaf slot and rewrites the aggregate of each
+     *   of its ancestors, leaving the rest of the node array untouched.
+     *
+     * @param pIndex
+     * Position whose value is replaced. Must be non-negative and less than the
+     * number of positions the tree covers; an out-of-range position is silently
+     * ignored, consistent with the tolerant write behaviour of the other
+     * structures in this library.
+     *
+     * @param pValue
+     * The new value for that position. Must not be null; a null value is ignored,
+     * because storing it would hand null to the combiner during the repair and
+     * would additionally collide with the marker that the query descent uses for
+     * a range contributing nothing.
+     */
+    public void update(int pIndex, ContentType pValue) {
+        /*
+         * Reject a position the tree does not cover. The size comparison also
+         * rules out every position in a tree covering no positions, where no
+         * update can ever be meaningful.
+         */
+        if (pIndex < 0 || pIndex >= size) {
+            return;
+        }
+
+        // Reject null early: it would propagate up the repair path and turn
+        // genuine aggregates into absent ones.
+        if (pValue == null) {
+            return;
+        }
+
+        // Begin at the root, the only node guaranteed to cover the position,
+        // and let the recursion narrow down to the single leaf holding it.
+        updateAt(ROOT_INDEX, 0, size - 1, pIndex, pValue);
+    }
+
+    /**
+     * Recursively descends to the leaf of the specified position, replaces its
+     * value, and recomputes the aggregates of the nodes above it.
+     *
+     * Detailed explanation of:
+     * - Purpose: Restores the invariant that every node holds the merge of its
+     *   two children after a single leaf has changed.
+     * - Business context: The repair travels in one direction only. A leaf is
+     *   contained in exactly one node per level, so precisely the ancestors of
+     *   that leaf can have become stale, and no sibling subtree needs to be
+     *   inspected. This is the structural reason an update costs a logarithmic
+     *   number of merges rather than a rebuild.
+     * - Processing steps:
+     *   1. Overwrite the value once the range has narrowed to the single position
+     *      being changed.
+     *   2. Otherwise continue into the half that contains the position, and merge
+     *      both children into this node once that half has been repaired.
+     * - Assumptions: Assumes the position lies inside the node range, which holds
+     *   for the root by validation in the public entry point and is preserved by
+     *   the choice of branch at every step.
+     * - Side effects: Writes to one leaf slot and to every node on the path from
+     *   the root to it.
+     *
+     * @param pNodeIndex
+     * Index of the node currently visited.
+     *
+     * @param pRangeStart
+     * First position covered by that node.
+     *
+     * @param pRangeEnd
+     * Last position covered by that node, inclusive.
+     *
+     * @param pIndex
+     * Position being changed. Must lie within the node range.
+     *
+     * @param pValue
+     * The new value for that position. Must not be null.
+     */
+    private void updateAt(int pNodeIndex, int pRangeStart, int pRangeEnd, int pIndex, ContentType pValue) {
+        /*
+         * The range has narrowed to the single position being changed, so this
+         * node is the leaf holding it and the new value replaces the old one
+         * directly. No merge is involved, because a leaf aggregates one element.
+         */
+        if (pRangeStart == pRangeEnd) {
+            nodes[pNodeIndex] = pValue;
+            return;
+        }
+
+        // Split exactly as the build did, so that the descent follows the same
+        // node boundaries the cached aggregates were computed for.
+        int middle = middleIndex(pRangeStart, pRangeEnd);
+
+        // Continue into the half that contains the position. The other half
+        // cannot have become stale, since none of its cached ranges includes the
+        // changed position.
+        if (pIndex <= middle) {
+            updateAt(leftChildIndex(pNodeIndex), pRangeStart, middle, pIndex, pValue);
+        } else {
+            updateAt(rightChildIndex(pNodeIndex), middle + 1, pRangeEnd, pIndex, pValue);
+        }
+
+        /*
+         * Recompute this node from its children now that the affected one is up
+         * to date. Doing so after the recursion is what makes the repair travel
+         * from the leaf back to the root, which is the only order in which each
+         * merge sees correct inputs.
+         */
+        nodes[pNodeIndex] = combiner.combine(
+                nodeAt(leftChildIndex(pNodeIndex)),
+                nodeAt(rightChildIndex(pNodeIndex)));
+    }
+
 }
