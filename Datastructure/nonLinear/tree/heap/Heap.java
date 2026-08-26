@@ -789,4 +789,156 @@ public class Heap<ContentType extends ComparableContent<ContentType>> {
         // Publish the new storage.
         elements = resizedElements;
     }
+
+    /**
+     * Removes the highest-precedence element from the heap, restoring the heap
+     * property afterwards.
+     *
+     * Detailed explanation of:
+     * - Purpose: Discards the root and repairs the structure so that the next
+     *   most extreme element takes its place, which is what allows a heap to be
+     *   drained into a sorted sequence one element at a time.
+     * - Business context: Calling this on an empty heap performs no action
+     *   rather than raising an underflow exception, matching the defensive
+     *   contract used throughout this library. Callers that need the element
+     *   must read it through peek beforehand, because this method intentionally
+     *   does not return the discarded value.
+     * - Processing steps:
+     *   1. Do nothing when the heap is empty.
+     *   2. Move the last element in level order into the root position. This is
+     *      the only element whose removal from its own position keeps the tree
+     *      complete, which is why the root is overwritten rather than its
+     *      children being promoted.
+     *   3. Clear the vacated tail slot and shrink the element count.
+     *   4. Sift the relocated element downwards, since it came from a leaf and
+     *      will almost certainly be outranked by its new children.
+     *   5. Shrink the backing array once it is mostly empty.
+     * - Assumptions: Assumes the heap property holds on entry, which every other
+     *   mutating operation guarantees.
+     * - Side effects: Mutates the backing array, decrements the element count,
+     *   and may replace the backing array entirely when shrinking.
+     *
+     * Time complexity: O(log n) worst case, dominated by the downward sift,
+     * which may travel the full height of the tree. The occasional shrink copy
+     * is O(n) but amortises to O(1) through the quarter-capacity threshold.
+     * Space complexity: O(1) amortised; a shrink step briefly holds both arrays,
+     * making peak usage during that step O(n).
+     */
+    public void remove() {
+        // Underflow is treated as a no-op so that callers can drain the heap in
+        // a loop without wrapping every call in an emptiness check.
+        if (isEmpty()) {
+            return;
+        }
+
+        // Index of the last element in level order, which is the one that will
+        // take over the root position.
+        int lastIndex = size - 1;
+
+        /*
+         * Overwrite the root with the last element rather than promoting one of
+         * the root's children. Promoting a child would leave a gap in the middle
+         * of the level-order sequence and destroy the completeness that the
+         * index arithmetic depends on; moving the last element preserves it.
+         */
+        elements[0] = elements[lastIndex];
+
+        // Clear the vacated tail slot so that the array does not retain a
+        // reference to an element that is no longer part of the heap, which
+        // would otherwise prevent its collection.
+        elements[lastIndex] = null;
+
+        // Account for the removal before sifting, so that the sift sees the
+        // correct boundary when testing whether a child exists.
+        size--;
+
+        // The relocated element came from a leaf and is very unlikely to
+        // outrank its new children, so push it back down to its proper level.
+        siftDown(0);
+
+        // Shrink only once the array is mostly empty; reacting at half capacity
+        // would let an alternating insert and remove sequence resize on every
+        // call.
+        if (size > 0 && size <= elements.length / SHRINK_THRESHOLD_DIVISOR) {
+            resize(elements.length / GROWTH_FACTOR);
+        }
+    }
+
+    /**
+     * Moves the element at the specified index away from the root until it takes
+     * precedence over both of its children.
+     *
+     * Detailed explanation of:
+     * - Purpose: Repairs the violation introduced by placing an arbitrary
+     *   element at an internal position, which happens when the last element is
+     *   moved to the root during removal and when the bulk construction sifts
+     *   each internal node in turn.
+     * - Business context: This is the counterpart of siftUp and the more
+     *   intricate of the two, because a node has two children and the repair
+     *   must choose between them rather than following a single parent link.
+     * - Processing steps: At each level, identify which of the current node and
+     *   its existing children takes precedence over the other two. Stop when
+     *   that is the current node, since the heap property then holds locally and
+     *   therefore, by transitivity, throughout the subtree below. Otherwise
+     *   exchange with the winning child and continue from that child's position.
+     *   Choosing the stronger of the two children is essential: exchanging with
+     *   the weaker one would place it above its sibling and create a fresh
+     *   violation rather than repairing the existing one.
+     * - Assumptions: Assumes the heap property holds everywhere except possibly
+     *   between the starting element and its descendants. Assumes the size
+     *   counter already reflects the current element population, since child
+     *   existence is decided by comparing indices against it.
+     * - Side effects: Exchanges elements along one node-to-leaf path of the
+     *   backing array.
+     *
+     * Time complexity: O(log n) worst case, when the element travels from the
+     * root to a leaf; O(1) when it already outranks both children.
+     * Space complexity: O(1); the walk is iterative.
+     *
+     * @param pStartIndex
+     * Index of the element to move downwards. Must be non-negative and less than
+     * the current size.
+     */
+    private void siftDown(int pStartIndex) {
+        // Tracks the travelling element's current position.
+        int currentIndex = pStartIndex;
+
+        while (true) {
+            int left = leftChildIndex(currentIndex);
+            int right = rightChildIndex(currentIndex);
+
+            // Index of whichever of the three nodes examined at this level takes
+            // precedence; it starts as the current node and is displaced only by
+            // a child that genuinely outranks it.
+            int strongestIndex = currentIndex;
+
+            // Compare against the left child when it exists. An index at or
+            // beyond the size denotes a position outside the occupied region and
+            // therefore a child that is not present.
+            if (left < size && hasPriority(elementAt(left), elementAt(strongestIndex))) {
+                strongestIndex = left;
+            }
+
+            // Compare against the right child on the same terms. Testing it
+            // against the running winner rather than against the current node is
+            // what selects the stronger of the two children.
+            if (right < size && hasPriority(elementAt(right), elementAt(strongestIndex))) {
+                strongestIndex = right;
+            }
+
+            /*
+             * The current node outranks both of its children, so the heap
+             * property holds at this level. Everything below was already valid,
+             * so the repair is complete and the walk stops.
+             */
+            if (strongestIndex == currentIndex) {
+                return;
+            }
+
+            // Exchange with the stronger child and continue the descent from
+            // that child's former position.
+            swap(currentIndex, strongestIndex);
+            currentIndex = strongestIndex;
+        }
+    }
 }
