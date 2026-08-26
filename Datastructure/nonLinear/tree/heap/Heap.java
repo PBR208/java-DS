@@ -64,6 +64,25 @@ import nonLinear.tree.base.ComparableContent;
  * to extremes, and as the reference implementation demonstrating the implicit
  * array representation of a complete binary tree.
  *
+ * Complexity summary, with n as the number of stored elements:
+ * - peek, isEmpty, size, capacity: O(1) worst case
+ * - insert: O(log n) worst case for the upward sift, with the array growth
+ *   amortising to O(1)
+ * - remove: O(log n) worst case for the downward sift, with the array shrink
+ *   amortising to O(1)
+ * - bulk construction from an array: O(n), strictly better than the O(n log n)
+ *   of inserting the same elements one at a time
+ * - overall space: O(n), holding only the elements themselves; no per-element
+ *   node object, child reference or cached height is stored, which is the
+ *   memory advantage of the implicit representation over the search trees in
+ *   this package
+ *
+ * Note which operation is deliberately absent: there is no efficient lookup of
+ * an arbitrary value. The heap property orders each node only against its own
+ * descendants, so locating a value that is not the extreme one requires scanning
+ * the whole array. Callers needing both ordered lookup and extreme access should
+ * use one of the search trees in this package instead.
+ *
  * @param <ContentType>
  * The type of content stored in the heap. Must implement ComparableContent to
  * provide the ordering comparisons that determine precedence between elements.

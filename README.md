@@ -40,7 +40,7 @@ The goal of this project is to:
 - [ ] Binary Search Tree (BST)  
 - [ ] AVL Tree  
 - [x] Red-Black Tree  
-- [ ] Heap (Min/Max Heap)  
+- [x] Heap (Min/Max Heap)  
 - [ ] Trie (Prefix Tree)  
 - [ ] Segment Tree  
 - [ ] Fenwick Tree (Binary Indexed Tree)  
