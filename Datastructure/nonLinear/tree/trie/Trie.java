@@ -613,4 +613,184 @@ public class Trie<ContentType> {
     public int size() {
         return size;
     }
+
+    /**
+     * Removes the specified key and prunes every node that its removal leaves
+     * without purpose.
+     *
+     * Detailed explanation of:
+     * - Purpose: Deletes an entry and restores the invariant that every node in
+     *   the trie lies on the path of at least one stored key.
+     * - Business context: Detaching the value alone would be enough for search
+     *   and containsKey to stop reporting the key, but it would silently break
+     *   startsWith, which treats the mere existence of a node as proof that some
+     *   key carries that prefix. A trie that is filled and then emptied would
+     *   also retain the entire skeleton of its former contents. Pruning is
+     *   therefore part of the operation rather than an optimisation.
+     * - Processing steps: Delegates to a recursive helper that descends to the
+     *   terminal node, clears its value on the way down and then, as the
+     *   recursion unwinds, unlinks each node that has become both value-less and
+     *   childless. Unwinding is what makes the pruning possible in a single
+     *   pass: a node can only be judged once the outcome for the node below it
+     *   is known.
+     * - Assumptions: Assumes the key count is only decremented when a value was
+     *   genuinely present, so that removing an absent key or a bare prefix
+     *   leaves the count untouched.
+     * - Side effects: Clears one value, may unlink a chain of nodes, and
+     *   decrements the key count when the key was present.
+     *
+     * Time complexity: O(k) in the length of the key, times the bounded
+     * per-level chain scan for the descent and for each unlink.
+     * Space complexity: O(k) for the recursion stack, bounded by the key length
+     * rather than by the number of stored keys.
+     *
+     * @param pKey
+     * The key to remove. Must not be null; null is ignored. Removing a key that
+     * is absent, or a string that is only a prefix of stored keys, leaves the
+     * trie completely unchanged including its key count.
+     */
+    public void remove(String pKey) {
+        // A null key cannot name a path through the trie.
+        if (pKey == null) {
+            return;
+        }
+
+        // The root itself is never pruned, so its return value is discarded: it
+        // must survive as the anchor of an empty trie.
+        removeRec(root, pKey, 0);
+    }
+
+    /**
+     * Clears the value at the end of the given key and reports whether the
+     * visited node has become prunable.
+     *
+     * Detailed explanation of:
+     * - Purpose: Implements the descend-then-prune pass underlying the public
+     *   remove method.
+     * - Business context: The return value carries the pruning decision back up
+     *   the recursion. A node may be discarded only when it neither terminates a
+     *   key nor leads to one, and both conditions can only be evaluated after
+     *   the level below has finished, which is why the work happens as the
+     *   recursion unwinds rather than on the way down.
+     * - Processing steps:
+     *   1. At the end of the key, clear the value if one is present and count
+     *      the removal. A node whose value was already absent means the key was
+     *      never stored, so nothing is counted.
+     *   2. Otherwise advance to the child for the current character. A missing
+     *      child means the key is absent, and reporting false stops the unwind
+     *      from pruning anything.
+     *   3. After the recursive call returns, unlink the child when it reported
+     *      itself prunable.
+     *   4. Report whether this node has now become prunable itself.
+     * - Assumptions: Assumes the index is a valid position within the key, which
+     *   the recursion maintains.
+     * - Side effects: May clear a value, unlink a child, and decrement the key
+     *   count.
+     *
+     * @param pNode
+     * The node currently being visited. Must not be null.
+     *
+     * @param pKey
+     * The key being removed. Must not be null.
+     *
+     * @param pIndex
+     * Position within the key that this node is responsible for consuming.
+     * Equals the key length once the terminal node has been reached.
+     *
+     * @return
+     * True when this node carries no value and has no children, and may
+     * therefore be unlinked by its parent; false when it must be kept.
+     */
+    private boolean removeRec(TrieNode pNode, String pKey, int pIndex) {
+
+        if (pIndex == pKey.length()) {
+            // The terminal node for this key has been reached.
+            if (pNode.value != null) {
+                // The key really was stored; drop it and account for it.
+                pNode.value = null;
+                size--;
+            }
+        } else {
+            char character = pKey.charAt(pIndex);
+            TrieNode child = findChild(pNode, character);
+
+            if (child == null) {
+                // The key is not stored. Report false so that the unwind leaves
+                // the existing structure completely untouched.
+                return false;
+            }
+
+            // Descend, then act on the verdict for the level below.
+            if (removeRec(child, pKey, pIndex + 1)) {
+                unlinkChild(pNode, child);
+            }
+        }
+
+        /*
+         * This node may be discarded only if it has stopped serving any purpose:
+         * it terminates no key of its own, and it leads to none either. A node
+         * that still has children must be kept even without a value, because it
+         * remains part of the path of every key below it.
+         */
+        return pNode.value == null && pNode.firstChild == null;
+    }
+
+    /**
+     * Detaches the specified child from a parent's child chain.
+     *
+     * Detailed explanation of:
+     * - Purpose: Performs the structural mutation that pruning is built from,
+     *   completing the pair begun by linkChild.
+     * - Business context: Because children are held in a singly linked chain,
+     *   detaching one requires knowing its predecessor, which is located by
+     *   walking the chain. The chain is bounded by the alphabet in use, so this
+     *   walk does not change the complexity of removal.
+     * - Processing steps: Handles the case where the child heads the chain by
+     *   advancing the parent's first-child reference; otherwise walks to the
+     *   predecessor and bridges across the departing node. The detached node's
+     *   own sibling link is cleared so that it cannot serve as a path back into
+     *   the surviving structure.
+     * - Assumptions: Assumes the child is genuinely present in the parent's
+     *   chain, which the single call site guarantees by having just descended
+     *   into it.
+     * - Side effects: Mutates the parent's child chain and clears the detached
+     *   node's sibling reference.
+     *
+     * Time complexity: O(c) in the number of children of the parent, bounded by
+     * the alphabet in use.
+     * Space complexity: O(1); the walk is iterative.
+     *
+     * @param pParent
+     * The node to detach from. Must not be null.
+     *
+     * @param pChild
+     * The child to detach. Must not be null and must be present in the parent's
+     * chain.
+     */
+    private void unlinkChild(TrieNode pParent, TrieNode pChild) {
+
+        if (pParent.firstChild == pChild) {
+            // The child heads the chain, so the successor becomes the new head.
+            pParent.firstChild = pChild.nextSibling;
+        } else {
+            // Locate the predecessor so that the chain can be bridged across the
+            // departing node.
+            TrieNode predecessor = pParent.firstChild;
+
+            while (predecessor != null && predecessor.nextSibling != pChild) {
+                predecessor = predecessor.nextSibling;
+            }
+
+            // A null predecessor would mean the child was not in this chain,
+            // which the call site rules out; the guard keeps the assignment safe
+            // regardless.
+            if (predecessor != null) {
+                predecessor.nextSibling = pChild.nextSibling;
+            }
+        }
+
+        // Sever the detached node's link so that it cannot lead back into the
+        // surviving structure and cannot keep former siblings reachable.
+        pChild.nextSibling = null;
+    }
 }
