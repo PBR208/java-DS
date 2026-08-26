@@ -616,4 +616,177 @@ public class Heap<ContentType extends ComparableContent<ContentType>> {
         // property guarantees it takes precedence over everything below it.
         return elementAt(0);
     }
+
+    /**
+     * Inserts an element into the heap, restoring the heap property afterwards.
+     *
+     * Detailed explanation of:
+     * - Purpose: Adds a value and repositions it so that every node again takes
+     *   precedence over its children, which is what keeps the extreme element at
+     *   the root for the next inspection.
+     * - Business context: Serves as the primary entry point for growing the
+     *   heap. Unlike an insertion into a search tree, no position has to be
+     *   located first: the element is appended at the only place a complete tree
+     *   can grow, and the repair then moves it to where it belongs.
+     * - Processing steps:
+     *   1. Reject null, consistent with the rest of this library.
+     *   2. Grow the backing array when it is exhausted.
+     *   3. Append at the first free slot, which is the next position in level
+     *      order and therefore the only one that keeps the tree complete.
+     *   4. Sift the new element upwards until its parent takes precedence over
+     *      it or it reaches the root.
+     * - Assumptions: Assumes the comparison methods of the content type are
+     *   consistent and transitive; an inconsistent ordering leaves elements in
+     *   arbitrary positions rather than corrupting the array.
+     * - Side effects: Mutates the backing array, increments the element count,
+     *   and may replace the backing array entirely when growth is required.
+     *
+     * Time complexity: O(log n) worst case, bounded by the height of a complete
+     * binary tree over n elements, which is exactly floor(log2(n)). The
+     * occasional growth copy is O(n) but amortises to O(1) through doubling, so
+     * the sift remains the dominant cost.
+     * Space complexity: O(1) amortised; a growth step temporarily holds both the
+     * old and the new array, making peak usage during that step O(n).
+     *
+     * @param pContent
+     * Element to insert. May be any ContentType instance; passing null is
+     * tolerated and silently ignored, so callers that must distinguish "stored
+     * nothing" from "stored a value" have to check for null before calling.
+     * Duplicates are permitted and stored as distinct elements, which differs
+     * deliberately from the search trees in this package: a heap imposes no
+     * uniqueness constraint, and a priority queue routinely holds many items of
+     * equal priority.
+     */
+    public void insert(ContentType pContent) {
+        // Reject null early: storing it would break the contract of peek, which
+        // reports an empty heap by returning null, and would additionally fail
+        // the first comparison the sift performs.
+        if (pContent == null) {
+            return;
+        }
+
+        // Grow before writing whenever the array is full, because the append
+        // index below is the current size and must stay inside the bounds.
+        if (size == elements.length) {
+            resize(elements.length * GROWTH_FACTOR);
+        }
+
+        /*
+         * Append at the end of the level-order sequence. This is the only
+         * position at which a complete binary tree can gain a node without
+         * leaving a gap, which is precisely the property that lets the tree be
+         * addressed arithmetically instead of through stored references.
+         */
+        elements[size] = pContent;
+        size++;
+
+        // The appended element may take precedence over its ancestors, so move
+        // it upwards until the heap property holds again.
+        siftUp(size - 1);
+    }
+
+    /**
+     * Moves the element at the specified index towards the root until its parent
+     * takes precedence over it.
+     *
+     * Detailed explanation of:
+     * - Purpose: Repairs the single class of violation that an append can
+     *   introduce. An element added at a leaf can only be out of place with
+     *   respect to its ancestors, never with respect to descendants it does not
+     *   have, so the repair travels in one direction only.
+     * - Business context: This procedure and its downward counterpart are the
+     *   entire balancing machinery of a heap. Their existence in place of the
+     *   rotations used by the search trees is the reason a heap is so much
+     *   cheaper to maintain, and equally the reason it cannot answer arbitrary
+     *   lookups.
+     * - Processing steps: Repeatedly compares the element against its parent and
+     *   exchanges the two when it takes precedence, following the path from the
+     *   starting index towards the root. The walk stops as soon as the parent
+     *   wins, because at that point every ancestor above also takes precedence
+     *   by transitivity, so no further comparison could fail.
+     * - Assumptions: Assumes the heap property holds everywhere except possibly
+     *   between the starting element and its ancestors.
+     * - Side effects: Exchanges elements along one root-to-node path of the
+     *   backing array.
+     *
+     * Time complexity: O(log n) worst case, when the element travels from a leaf
+     * to the root; O(1) when its parent already takes precedence.
+     * Space complexity: O(1); the walk is iterative.
+     *
+     * @param pStartIndex
+     * Index of the element to move upwards. Must be non-negative and less than
+     * the current size.
+     */
+    private void siftUp(int pStartIndex) {
+        // Tracks the travelling element's current position.
+        int currentIndex = pStartIndex;
+
+        // The root has no parent, so reaching index zero always terminates the
+        // walk regardless of any comparison.
+        while (currentIndex > 0) {
+            int parent = parentIndex(currentIndex);
+
+            /*
+             * Stop as soon as the parent takes precedence. Transitivity of the
+             * ordering guarantees that every ancestor further up also takes
+             * precedence at this point, so continuing could not find another
+             * violation.
+             */
+            if (!hasPriority(elementAt(currentIndex), elementAt(parent))) {
+                return;
+            }
+
+            // The element outranks its parent, so the two exchange places and
+            // the walk continues from the parent's former position.
+            swap(currentIndex, parent);
+            currentIndex = parent;
+        }
+    }
+
+    /**
+     * Replaces the backing array with one of the requested capacity, preserving
+     * every stored element and its position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the single point at which storage is reallocated, so
+     *   that both the growth path of insert and the shrink path of remove share
+     *   one implementation of the capacity invariants.
+     * - Business context: Resizing is orthogonal to the heap property. Because
+     *   the tree structure is encoded in the indices rather than in references,
+     *   copying the occupied prefix to a larger or smaller array preserves the
+     *   entire structure automatically; no element changes its position and no
+     *   sift is required afterwards.
+     * - Processing steps: Raises the request to the internal minimum, allocates
+     *   the replacement array, copies the occupied prefix, and publishes the new
+     *   reference.
+     * - Assumptions: Assumes the requested capacity is large enough to hold the
+     *   current element count, which every call site guarantees.
+     * - Side effects: Allocates a new array and abandons the previous one, which
+     *   becomes eligible for garbage collection.
+     *
+     * Time complexity: O(n) in the current element count, dominated by the bulk
+     * copy.
+     * Space complexity: O(pNewCapacity), with both arrays alive simultaneously
+     * until the new reference is published.
+     *
+     * @param pNewCapacity
+     * Desired length of the new backing array. Values below the internal minimum
+     * capacity are raised to it so that the array can always be doubled again.
+     */
+    private void resize(int pNewCapacity) {
+        // Never fall below the minimum, otherwise a zero-length array would
+        // leave the multiplicative growth strategy unable to produce space.
+        int targetCapacity = Math.max(pNewCapacity, MINIMUM_CAPACITY);
+
+        // Allocate the replacement storage; Object[] is required for the same
+        // erasure reason that applies to the original allocation.
+        Object[] resizedElements = new Object[targetCapacity];
+
+        // Copy the occupied prefix. Positions are preserved exactly, which is
+        // what leaves the implicit tree structure intact across the move.
+        System.arraycopy(elements, 0, resizedElements, 0, size);
+
+        // Publish the new storage.
+        elements = resizedElements;
+    }
 }
