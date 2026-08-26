@@ -405,4 +405,173 @@ public class FenwickTree<ContentType> {
         }
     }
 
+    /**
+     * Accumulates the fragments describing the prefix that ends at the specified
+     * slot.
+     *
+     * Detailed explanation of:
+     * - Purpose: Assembles the aggregate of the first positions of the sequence
+     *   out of the stored blocks, which is the only aggregate this structure holds
+     *   directly and the one every public query is derived from.
+     * - Business context: The walk is the reading half of the idea the structure
+     *   is named for. Each slot covers the block of positions ending at its own
+     *   index whose length is that index's lowest set bit, so removing that bit
+     *   moves to the slot covering everything before the block just consumed. The
+     *   bits of the index are therefore cleared one by one, and the blocks
+     *   collected are exactly the powers of two the index decomposes into.
+     * - Processing steps: Starts from the neutral element and repeatedly merges
+     *   the current slot before clearing its lowest set bit, until the index has
+     *   reached the reserved slot at zero and no bit is left.
+     * - Assumptions: Assumes the slot index lies within the fragment array, which
+     *   the public entry points establish. An index of zero is explicitly valid
+     *   and describes the empty prefix, for which the loop performs no iteration
+     *   and the neutral element is returned unchanged.
+     * - Side effects: None; this method only reads fragments.
+     *
+     * Time complexity: O(log n); one iteration per set bit of the index, and an
+     * index bounded by n has at most as many bits as n does. There is no
+     * recursion and no branching, which is what gives this walk a smaller
+     * constant factor than the equivalent descent through a segment tree.
+     * Space complexity: O(1); the walk is iterative and holds a single running
+     * aggregate.
+     *
+     * @param pTreeIndex
+     * One-based index of the last position of the prefix, or zero for the empty
+     * prefix. Must not exceed the number of covered positions.
+     *
+     * @return
+     * The aggregate of the positions up to and including that slot, or the
+     * neutral element of the group for the empty prefix. Never null.
+     */
+    private ContentType prefixUpTo(int pTreeIndex) {
+        // Start from the neutral element so that the empty prefix needs no
+        // special case and the first merge below has a valid left operand.
+        ContentType aggregate = group.identity();
+
+        /*
+         * Consume one block per iteration, moving from the end of the prefix
+         * towards its start. Clearing the lowest set bit both leaves the block
+         * just consumed behind and lands exactly on the slot that covers the
+         * positions preceding it, which is why no boundary ever has to be
+         * computed explicitly.
+         */
+        for (int currentIndex = pTreeIndex; currentIndex > 0; currentIndex -= lowestSetBit(currentIndex)) {
+            aggregate = group.combine(aggregate, fragmentAt(currentIndex));
+        }
+
+        return aggregate;
+    }
+
+    /**
+     * Reports the aggregate over the positions from the beginning of the sequence
+     * up to the specified position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the question the structure stores its data for, namely
+     *   what the maintained aggregate is over an initial run of positions.
+     * - Business context: Prefix aggregates are the natural currency of this
+     *   structure and the reason it is the standard choice for running totals,
+     *   cumulative frequency tables and order-statistics counting. Every other
+     *   query offered here is expressed in terms of this one.
+     * - Processing steps: Rejects a position the tree does not cover, then
+     *   translates it into the one-based slot index and walks the fragments.
+     * - Assumptions: Assumes the caller uses an inclusive bound, matching the way
+     *   ranges are described throughout this class.
+     * - Side effects: None; this operation only reads fragments.
+     *
+     * Time complexity: O(log n); one merge per set bit of the translated index.
+     * Space complexity: O(1); the walk is iterative.
+     *
+     * @param pToIndex
+     * Last position of the prefix, inclusive. Must be non-negative and less than
+     * the number of covered positions.
+     *
+     * @return
+     * The aggregate over the positions from zero up to and including pToIndex, or
+     * null when that position lies outside the covered range, which includes
+     * every query against a tree covering no positions. Null is unambiguous as
+     * that marker because the tree never stores or produces null: construction
+     * rejects null values and the group is contractually forbidden from returning
+     * null. Reporting an unanswerable request this way rather than by exception
+     * follows the convention of the read operations elsewhere in this library.
+     */
+    public ContentType prefix(int pToIndex) {
+        // Reject a position outside the sequence. The size comparison also covers
+        // the tree over no positions, where no position can be valid at all.
+        if (pToIndex < 0 || pToIndex >= size) {
+            return null;
+        }
+
+        // Translate the caller's zero-based position into the one-based slot that
+        // ends the requested prefix.
+        return prefixUpTo(pToIndex + INDEX_BASE_OFFSET);
+    }
+
+    /**
+     * Reports the aggregate over the specified range of positions.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the aggregate over an arbitrary contiguous span rather
+     *   than only over an initial one.
+     * - Business context: This is where the demand for an invertible aggregate
+     *   becomes visible. The structure holds no fragment describing a range that
+     *   starts anywhere but at the beginning, so the answer is obtained by taking
+     *   the prefix ending at the last requested position and removing from it the
+     *   prefix ending just before the first. A segment tree needs no such removal
+     *   and consequently serves minima and maxima, which have no inverse; this
+     *   structure trades that generality for half the memory and a shorter walk.
+     * - Processing steps:
+     *   1. Reject a range that no position could satisfy.
+     *   2. Assemble the longer prefix, assemble the shorter one, and remove the
+     *      second from the first.
+     * - Assumptions: Assumes the group's inverse is exact, as its contract
+     *   demands. An approximate inverse, such as one over floating-point values,
+     *   returns answers that drift as the two prefixes grow.
+     * - Side effects: None; this operation only reads fragments.
+     *
+     * Time complexity: O(log n); two prefix walks, each of one merge per set bit,
+     * followed by a single removal. Notably independent of the width of the
+     * requested range, so a range covering the whole sequence costs no more than
+     * one covering two positions.
+     * Space complexity: O(1); both walks are iterative.
+     *
+     * @param pFromIndex
+     * First position of the range, inclusive. Must be non-negative and must not
+     * exceed pToIndex.
+     *
+     * @param pToIndex
+     * Last position of the range, inclusive. Must be less than the number of
+     * covered positions.
+     *
+     * @return
+     * The aggregate over the requested range, or null when the range is empty,
+     * reversed, or reaches outside the covered positions.
+     */
+    public ContentType range(int pFromIndex, int pToIndex) {
+        /*
+         * Reject anything that cannot describe a real span of covered positions:
+         * a negative start, an end beyond the sequence, or bounds in the wrong
+         * order.
+         */
+        if (pFromIndex < 0 || pToIndex >= size || pFromIndex > pToIndex) {
+            return null;
+        }
+
+        // The prefix ending at the last requested position, which covers the
+        // range plus everything preceding it.
+        ContentType includingPrefix = prefixUpTo(pToIndex + INDEX_BASE_OFFSET);
+
+        /*
+         * The prefix ending immediately before the range. The one-based index of
+         * the position preceding pFromIndex is pFromIndex itself, so no separate
+         * subtraction is needed here, and a range starting at position zero
+         * naturally yields the empty prefix.
+         */
+        ContentType precedingPrefix = prefixUpTo(pFromIndex);
+
+        // Remove the part that precedes the range, leaving exactly the requested
+        // span.
+        return group.difference(includingPrefix, precedingPrefix);
+    }
+
 }
