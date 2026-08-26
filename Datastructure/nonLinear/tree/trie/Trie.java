@@ -218,4 +218,141 @@ public class Trie<ContentType> {
         // No keys are stored yet; the root carries no value.
         size = 0;
     }
+
+    /**
+     * Locates the child of the specified node that is labelled with the given
+     * character.
+     *
+     * Detailed explanation of:
+     * - Purpose: Performs the single step that every descent through the trie is
+     *   built from, translating "advance by this character" into a node.
+     * - Business context: Concentrating the chain walk here means the insertion,
+     *   lookup and removal procedures all read as descents over characters
+     *   rather than as pointer manipulation, and a change to the child
+     *   representation would touch only this method and its two companions.
+     * - Processing steps: Walks the parent's child chain from its first entry,
+     *   following sibling links until a matching character is found or the chain
+     *   is exhausted.
+     * - Assumptions: Assumes at most one child of a node carries any given
+     *   character, which linkChild guarantees by only ever adding a character
+     *   that is not already present.
+     * - Side effects: None; this method only reads the structure.
+     *
+     * Time complexity: O(c) in the number of children of the node, which is
+     * bounded by the size of the alphabet actually in use and is therefore
+     * effectively constant.
+     * Space complexity: O(1); the walk is iterative.
+     *
+     * @param pParent
+     * The node whose children are searched. Must not be null; every call site
+     * holds a node it has just reached.
+     *
+     * @param pCharacter
+     * The character to advance by. Any char value is valid.
+     *
+     * @return
+     * The child node labelled with that character, or null when the parent has
+     * no such child.
+     */
+    private TrieNode findChild(TrieNode pParent, char pCharacter) {
+        // Walk the sibling chain of this parent's children.
+        TrieNode currentChild = pParent.firstChild;
+
+        while (currentChild != null) {
+            if (currentChild.character == pCharacter) {
+                return currentChild;
+            }
+            currentChild = currentChild.nextSibling;
+        }
+
+        // The parent has no child for this character.
+        return null;
+    }
+
+    /**
+     * Adds the specified node to the front of a parent's child chain.
+     *
+     * Detailed explanation of:
+     * - Purpose: Performs the single structural mutation that grows the trie.
+     * - Business context: Inserting at the front rather than at the end keeps
+     *   the operation constant-time. Child order carries no meaning in a trie:
+     *   the structure is navigated by character, never by position, so nothing
+     *   in this class depends on the order in which siblings appear. The one
+     *   visible consequence is that keysWithPrefix reports keys in an
+     *   unspecified order, which its documentation states explicitly.
+     * - Processing steps: Points the new node at the parent's current first
+     *   child and then makes it the new first child.
+     * - Assumptions: Assumes the parent does not already have a child labelled
+     *   with the new node's character, which every call site establishes by
+     *   consulting findChild first. Adding a duplicate character would make one
+     *   of the two nodes permanently unreachable.
+     * - Side effects: Mutates the parent's child chain.
+     *
+     * Time complexity: O(1); two reference assignments.
+     * Space complexity: O(1); no allocation occurs here.
+     *
+     * @param pParent
+     * The node to attach the child to. Must not be null.
+     *
+     * @param pChild
+     * The node to attach. Must not be null and must carry a character that the
+     * parent does not already have a child for.
+     */
+    private void linkChild(TrieNode pParent, TrieNode pChild) {
+        // Splice the new node in at the head of the chain; the former first
+        // child becomes its sibling.
+        pChild.nextSibling = pParent.firstChild;
+        pParent.firstChild = pChild;
+    }
+
+    /**
+     * Locates the node reached by spelling out the specified sequence of
+     * characters from the root.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the shared descent used by every read operation. The
+     *   node it returns represents the supplied string as a prefix, regardless
+     *   of whether that prefix is also a stored key.
+     * - Business context: The distinction between reaching a node and that node
+     *   carrying a value is exactly the distinction between "some key starts
+     *   with this" and "this is a key", which is why the two questions are
+     *   answered by different public methods built on this one helper.
+     * - Processing steps: Starts at the root and advances one child per
+     *   character, abandoning the descent as soon as a character has no matching
+     *   child.
+     * - Assumptions: Assumes a non-null argument; the public entry points filter
+     *   null out before delegating here. The empty string is valid and yields the
+     *   root, since spelling out no characters leaves the descent where it began.
+     * - Side effects: None; this method only reads the structure.
+     *
+     * Time complexity: O(k) in the length of the supplied string, times the
+     * bounded per-level chain scan. Notably independent of how many keys the
+     * trie holds, which is the characteristic property of this structure.
+     * Space complexity: O(1); the descent is iterative.
+     *
+     * @param pSequence
+     * The characters to spell out. Must not be null; may be empty, which yields
+     * the root.
+     *
+     * @return
+     * The node representing that prefix, or null when the descent runs out of
+     * matching children before the sequence is exhausted.
+     */
+    private TrieNode findNode(String pSequence) {
+        // Begin at the root, which represents the empty prefix.
+        TrieNode currentNode = root;
+
+        // Consume one character per level.
+        for (int index = 0; index < pSequence.length(); index++) {
+            currentNode = findChild(currentNode, pSequence.charAt(index));
+
+            // No child for this character means no stored key carries this
+            // prefix, so the descent cannot continue.
+            if (currentNode == null) {
+                return null;
+            }
+        }
+
+        return currentNode;
+    }
 }
