@@ -941,4 +941,137 @@ public class Heap<ContentType extends ComparableContent<ContentType>> {
             currentIndex = strongestIndex;
         }
     }
+
+    /**
+     * Constructs a heap containing every non-null element of the supplied array,
+     * built in linear rather than logarithmic-per-element time.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the bulk construction path for the common case in
+     *   which the entire population is known up front, such as when seeding a
+     *   graph algorithm with every vertex or when heap sort takes ownership of
+     *   an unsorted array.
+     * - Business context: The distinction between this constructor and a loop of
+     *   individual insertions is one of the standard results about heaps and the
+     *   main reason this path is worth providing. Inserting n elements one at a
+     *   time costs O(n log n), because each insertion may sift a leaf all the way
+     *   to the root. Building bottom-up costs only O(n): the sift performed at
+     *   each node is bounded by the height of that node's subtree, and a
+     *   complete tree has very few tall nodes and very many short ones. Summing
+     *   those heights yields a total that is linear in n rather than n log n.
+     * - Processing steps:
+     *   1. Validate the ordering direction and allocate storage large enough for
+     *      the supplied population.
+     *   2. Copy across the non-null elements, silently skipping nulls so that a
+     *      partially populated array is accepted on the same terms that insert
+     *      accepts a null argument.
+     *   3. Sift down every internal node, starting from the last one and moving
+     *      towards the root. Processing in that order guarantees that when a
+     *      node is sifted, both of its subtrees are already valid heaps, which is
+     *      the precondition siftDown requires.
+     *   4. Leaf nodes are skipped entirely, since a subtree consisting of a
+     *      single node is trivially a valid heap. That is why the loop starts at
+     *      the parent of the last element rather than at the last element.
+     * - Assumptions: Assumes the supplied array is not modified concurrently.
+     *   The array itself is not retained: its contents are copied, so later
+     *   changes by the caller do not affect the heap.
+     * - Side effects: Allocates a backing array sized to the supplied population
+     *   and rearranges the copied elements into heap order.
+     *
+     * Time complexity: O(n) in the number of supplied elements, as argued above.
+     * This is strictly better than the O(n log n) of repeated insertion and is
+     * the reason to prefer this constructor whenever the population is known.
+     * Space complexity: O(n); one backing array sized to the population.
+     *
+     * @param pOrder
+     * Direction of the ordering to maintain. Must not be null.
+     *
+     * @param pInitialElements
+     * Elements to populate the heap with. May be null or empty, both of which
+     * produce an empty heap rather than an error. Individual null entries are
+     * skipped, so the resulting size may be smaller than the array length.
+     * Duplicate values are permitted and are stored as distinct elements.
+     *
+     * @throws IllegalArgumentException
+     * Thrown when pOrder is null, for the same reason as in the capacity-aware
+     * constructor: no comparison this heap performs would be meaningful without
+     * an ordering direction.
+     */
+    public Heap(Order pOrder, ContentType[] pInitialElements) {
+        // Reuse the validation and allocation rules of the primary constructor,
+        // sizing the storage for the supplied population where one was given.
+        this(pOrder, pInitialElements == null
+                ? DEFAULT_INITIAL_CAPACITY
+                : pInitialElements.length);
+
+        // A missing or empty array simply yields the empty heap that the
+        // delegated constructor already produced.
+        if (pInitialElements == null) {
+            return;
+        }
+
+        // Copy the supplied elements into the backing array, skipping nulls on
+        // the same terms that insert ignores a null argument. The elements land
+        // in arbitrary order; establishing the heap property is the job of the
+        // bottom-up pass below.
+        for (ContentType element : pInitialElements) {
+            if (element != null) {
+                elements[size] = element;
+                size++;
+            }
+        }
+
+        // Rearrange the copied elements into heap order in linear time.
+        buildHeap();
+    }
+
+    /**
+     * Establishes the heap property across the entire backing array by sifting
+     * every internal node downwards, from the last one towards the root.
+     *
+     * Detailed explanation of:
+     * - Purpose: Converts an arbitrarily ordered array into a valid heap in
+     *   linear time, which is the operation that makes bulk construction cheaper
+     *   than repeated insertion.
+     * - Business context: This is the classic build-heap procedure, and the order
+     *   in which it visits nodes is the whole subtlety. Working from the end
+     *   towards the root means that by the time any node is processed, both of
+     *   its subtrees are already valid heaps; that is exactly the precondition
+     *   siftDown needs in order to repair a violation in a single downward walk.
+     *   Running the same loop in the opposite direction would not produce a valid
+     *   heap, because siftDown would be operating on subtrees that are themselves
+     *   still unordered.
+     * - Processing steps: Computes the index of the last internal node, which is
+     *   the parent of the final element, and sifts every node from there down to
+     *   index zero.
+     * - Assumptions: Assumes the size counter already reflects the populated
+     *   region of the backing array.
+     * - Side effects: Rearranges the occupied region of the backing array.
+     *
+     * Time complexity: O(n). Although siftDown is O(log n) in the worst case, the
+     * bound that applies here is the height of each individual node's subtree,
+     * and the sum of those heights over a complete tree is linear in n.
+     * Space complexity: O(1); the procedure works in place.
+     */
+    private void buildHeap() {
+        // An empty or single-element array is already a valid heap, and the
+        // index computed below would be meaningless for it.
+        if (size < CHILDREN_PER_NODE) {
+            return;
+        }
+
+        /*
+         * The last internal node is the parent of the final element; every index
+         * beyond it addresses a leaf. Leaves need no work, because a single-node
+         * subtree trivially satisfies the heap property, and skipping them is
+         * what removes roughly half of the nodes from this loop.
+         */
+        int lastInternalIndex = parentIndex(size - 1);
+
+        // Descending order guarantees that both subtrees of the node being
+        // processed have already been made valid heaps.
+        for (int index = lastInternalIndex; index >= 0; index--) {
+            siftDown(index);
+        }
+    }
 }
