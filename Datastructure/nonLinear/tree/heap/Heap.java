@@ -493,4 +493,127 @@ public class Heap<ContentType extends ComparableContent<ContentType>> {
         elements[pFirstIndex] = elements[pSecondIndex];
         elements[pSecondIndex] = held;
     }
+
+    /**
+     * Determines whether this heap currently contains no elements.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the guard clause callers are expected to use before
+     *   inspecting or removing the root, since both of those operations are
+     *   defined to fail silently on an empty heap rather than to raise an
+     *   exception.
+     * - Business context: This is also the natural loop condition for draining a
+     *   heap, which is how it is consumed by heap sort and by any algorithm that
+     *   processes a frontier until it is exhausted.
+     * - Processing steps: Compares the size counter against zero.
+     * - Assumptions: Assumes the size counter is kept in step with the occupied
+     *   region of the backing array, which every mutating operation preserves.
+     * - Side effects: None; this method does not modify internal state.
+     *
+     * Time complexity: O(1); a single counter comparison.
+     * Space complexity: O(1); no auxiliary storage.
+     *
+     * @return
+     * True when no element is stored, false as soon as at least one element has
+     * been inserted and not yet removed.
+     */
+    public boolean isEmpty() {
+        // Capacity may remain after removals, so only the logical size is a
+        // valid emptiness criterion.
+        return size == 0;
+    }
+
+    /**
+     * Returns the number of elements currently stored in this heap.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes the element count without a traversal, and provides the
+     *   quantity against which this structure's logarithmic bounds are stated.
+     * - Business context: Callers commonly use the count to report the size of a
+     *   pending frontier or backlog, or to size an output buffer before draining
+     *   the heap into a sorted sequence.
+     * - Processing steps: Returns the incrementally maintained counter.
+     * - Assumptions: Assumes insert and remove adjust the counter exactly on the
+     *   paths that genuinely add or discard an element.
+     * - Side effects: None; this method does not modify internal state.
+     *
+     * Time complexity: O(1); the count is maintained incrementally.
+     * Space complexity: O(1); no auxiliary storage.
+     *
+     * @return
+     * Element count, zero for an empty heap and never negative. Duplicates are
+     * counted individually, since a heap stores them as distinct elements.
+     */
+    public int size() {
+        return size;
+    }
+
+    /**
+     * Returns the number of elements the backing array can hold before the next
+     * growth step.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes the physical storage size as diagnostic information,
+     *   parallel to the getHeight and getBlackHeight accessors of the trees in
+     *   this package, so that the growth and shrink behaviour can be observed
+     *   rather than merely trusted.
+     * - Business context: Observing how capacity evolves is a central learning
+     *   goal of this reference implementation; it is not part of the heap
+     *   contract, and callers must not treat the value as an upper bound on how
+     *   many elements they may insert.
+     * - Processing steps: Returns the length of the backing array.
+     * - Assumptions: None.
+     * - Side effects: None; this method does not modify internal state.
+     *
+     * Time complexity: O(1); a direct array length read.
+     * Space complexity: O(1); no auxiliary storage.
+     *
+     * @return
+     * Current length of the backing array, always at least the internal minimum
+     * capacity and always greater than or equal to the current size.
+     */
+    public int capacity() {
+        return elements.length;
+    }
+
+    /**
+     * Returns the highest-precedence element without removing it.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the constant-time access to the extreme element that
+     *   is the entire reason for choosing a heap over a sorted structure.
+     * - Business context: This is the read half of the read-then-discard pattern
+     *   the API imposes: because remove returns nothing, consumers inspect the
+     *   root here and only afterwards discard it. It is also the operation an
+     *   algorithm uses to decide whether the extreme element is worth processing
+     *   at all, for example when comparing the smallest pending distance against
+     *   a bound before committing to the work.
+     * - Processing steps: Reports null for an empty heap, otherwise reads index
+     *   zero, which the heap property guarantees holds the extreme element.
+     * - Assumptions: Assumes the heap property currently holds, which every
+     *   mutating operation re-establishes before returning.
+     * - Side effects: None; the heap is left completely unmodified, so repeated
+     *   invocations yield the same element until it is removed.
+     *
+     * Time complexity: O(1); a single indexed read, with no sifting involved.
+     * Space complexity: O(1); no auxiliary storage.
+     *
+     * @return
+     * The smallest stored element for a minimum-heap or the largest for a
+     * maximum-heap, or null when the heap is empty. Null is unambiguous as an
+     * empty-heap marker because insert refuses to store null elements. When
+     * several elements compare equal, which of them is returned is unspecified,
+     * since the heap property does not order equal elements against each other.
+     */
+    public ContentType peek() {
+        // An empty heap has no extreme element; report that through null rather
+        // than reading a cleared slot.
+        if (isEmpty()) {
+            return null;
+        }
+
+        // The root of the implicit tree lives at index zero, and the heap
+        // property guarantees it takes precedence over everything below it.
+        return elementAt(0);
+    }
 }
