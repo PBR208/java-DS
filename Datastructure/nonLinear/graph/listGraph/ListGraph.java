@@ -432,6 +432,11 @@ public class ListGraph implements Graph {
         }
 
         // Return the accumulated list of connected edges.
+        // Position the cursor on the first element so that the returned
+        // list is immediately iterable. Both Graph implementations do this
+        // for every list they hand out, so a caller can traverse the result
+        // without knowing which implementation produced it.
+        copyOf.toFirst();
         return copyOf;
     }
 
@@ -843,6 +848,11 @@ public class ListGraph implements Graph {
         }
 
         // Return the accumulated list of neighboring vertices.
+        // Position the cursor on the first element so that the returned
+        // list is immediately iterable. Both Graph implementations do this
+        // for every list they hand out, so a caller can traverse the result
+        // without knowing which implementation produced it.
+        result.toFirst();
         return result;
     }
 

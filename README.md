@@ -24,7 +24,7 @@ The goal of this project is to:
 
 - [x] Singly Linked List  
 - [x] Doubly Linked List  
-- [ ] Circular Linked List  
+- [x] Circular Linked List  
 - [x] Stack (Array-based)  
 - [x] Stack (Linked List-based)  
 - [x] Queue (Array-based)  
@@ -36,9 +36,9 @@ The goal of this project is to:
 
 ### 🌲 Non-Linear Data Structures
 
-- [ ] Binary Tree  
-- [ ] Binary Search Tree (BST)  
-- [ ] AVL Tree  
+- [x] Binary Tree  
+- [x] Binary Search Tree (BST)  
+- [x] AVL Tree  
 - [x] Red-Black Tree  
 - [x] Heap (Min/Max Heap)  
 - [ ] Trie (Prefix Tree)  
@@ -50,11 +50,11 @@ The goal of this project is to:
 
 ### 🕸️ Graph Data Structures
 
-- [ ] Adjacency Matrix Representation  
-- [ ] Adjacency List Representation  
+- [x] Adjacency Matrix Representation  
+- [x] Adjacency List Representation  
 - [ ] Directed Graph Implementation  
-- [ ] Undirected Graph Implementation  
-- [ ] Weighted Graph Implementation  
+- [x] Undirected Graph Implementation  
+- [x] Weighted Graph Implementation  
 - [ ] Graph Traversals (BFS, DFS)  
 - [ ] Dijkstra’s Shortest Path Algorithm  
 - [ ] Bellman-Ford Algorithm  

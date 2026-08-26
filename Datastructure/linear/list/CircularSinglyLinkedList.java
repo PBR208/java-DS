@@ -247,7 +247,7 @@ public class CircularSinglyLinkedList<ContentType> {
    *
    * @param pList circular list to append
    */
-  public void concat(CircularSinglyLinkedList pList) {
+  public void concat(CircularSinglyLinkedList<ContentType> pList) {
     if (pList != this && pList != null && !pList.isEmpty()) {
 
       if (this.isEmpty()) {
