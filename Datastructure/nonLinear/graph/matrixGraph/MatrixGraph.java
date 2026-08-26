@@ -136,18 +136,22 @@ public class MatrixGraph implements Graph {
      *   nearly all matrix-based operations (edge lookup, edge insertion,
      *   removal, neighbor discovery) to translate a vertex reference into
      *   a usable matrix coordinate.
-     * - Processing steps: Performs a linear scan across the entire
-     *   vertices array, comparing each slot against the target vertex by
-     *   reference equality, and returns the index of the first match.
+     * - Processing steps: Performs a linear scan across the occupied prefix
+     *   of the vertices array, comparing each slot against the target
+     *   vertex by reference equality, and returns the index of the first
+     *   match.
      * - Assumptions: Assumes vertex identity is determined by reference
-     *   equality rather than by identifier equality. Scans the full array
-     *   length rather than stopping at vertexCount, meaning unused trailing
-     *   slots (which are null) are also checked but cannot match a
-     *   non-null vertex.
+     *   equality rather than by identifier equality. The scan deliberately
+     *   stops at vertexCount rather than running to the full array length:
+     *   the trailing capacity holds null, so scanning it would report a
+     *   match for a null argument and hand the caller an index outside the
+     *   occupied region, which the removal logic would then treat as a real
+     *   vertex position and corrupt the graph.
      * - Side effects: None; this method does not modify internal state.
      *
      * @param pVertex
-     * The vertex whose array index is to be located.
+     * The vertex whose array index is to be located. May be null, which is
+     * reported as absent rather than matching an unused slot.
      *
      * @return
      * The zero-based index of the specified vertex within the internal
@@ -155,9 +159,15 @@ public class MatrixGraph implements Graph {
      */
     private int indexOf(Vertex pVertex) {
 
-        // Scan every slot of the vertices array, including unused trailing
-        // capacity, searching for a reference match.
-        for (int i = 0; i < vertices.length; i++){
+        // A null argument is never a stored vertex. Rejecting it up front
+        // prevents it from matching the null padding beyond vertexCount.
+        if (pVertex == null) {
+            return -1;
+        }
+
+        // Scan only the occupied prefix; the slots beyond vertexCount hold
+        // null padding and never represent a vertex of this graph.
+        for (int i = 0; i < vertexCount; i++){
             if (vertices[i] == pVertex){
                 // Match found; return its position immediately.
                 return i;
@@ -180,15 +190,17 @@ public class MatrixGraph implements Graph {
      *   insertion.
      * - Processing steps: Allocates a new vertex array at twice the
      *   current length and copies existing vertex references into it.
-     *   Separately allocates a new matrix array with twice the current
-     *   row count, retaining the existing column count, and copies
-     *   existing matrix rows into it. Replaces the internal vertices and
-     *   matrix references with the newly allocated arrays.
+     *   Separately allocates a new matrix with twice the current row count
+     *   AND twice the current column count, then copies each existing row
+     *   into the corresponding longer row of the new matrix.
      * - Assumptions: Assumes this method is invoked only when the vertex
-     *   array is at full capacity. Note that the column dimension of the
-     *   newly allocated matrix is derived from matrix[0].length (the
-     *   existing column count) and is not doubled alongside the row count
-     *   in this method; column growth is not performed here.
+     *   array is at full capacity. Both matrix dimensions must grow
+     *   together: the matrix is indexed by vertex position on both axes, so
+     *   a matrix whose rows were lengthened while the rows themselves
+     *   stayed short would throw an index-out-of-bounds as soon as an edge
+     *   touched a vertex stored beyond the original column count. The rows
+     *   are therefore copied individually rather than by copying the outer
+     *   array, which would have reused the original short row arrays.
      * - Side effects: Replaces the internal vertices and matrix array
      *   references with newly allocated, larger arrays; discards the
      *   previous array instances.
@@ -205,13 +217,16 @@ public class MatrixGraph implements Graph {
         int rows = matrix.length;
         int cols = matrix[0].length;
 
-        // Allocate a new matrix with double the row capacity, preserving
-        // the existing column count.
-        Edge[][] growDoubleEdge = new Edge[rows * 2][cols];
+        // Allocate a new matrix with double the capacity on BOTH axes,
+        // because a vertex index addresses a row and a column alike.
+        Edge[][] growDoubleEdge = new Edge[rows * 2][cols * 2];
 
-        // Copy all existing matrix rows (each an array reference) into the
-        // new matrix structure.
-        System.arraycopy(matrix, 0, growDoubleEdge, 0, rows);
+        // Copy each existing row into the corresponding new, longer row.
+        // Copying the outer array instead would carry over the original
+        // short row arrays and leave the new column capacity unusable.
+        for (int i = 0; i < rows; i++) {
+            System.arraycopy(matrix[i], 0, growDoubleEdge[i], 0, cols);
+        }
 
         // Replace the internal vertices reference with the newly grown
         // array.
@@ -256,6 +271,11 @@ public class MatrixGraph implements Graph {
         }
 
         // Return the completed list of vertices.
+        // Position the cursor on the first element so that the returned
+        // list is immediately iterable. Both Graph implementations do this
+        // for every list they hand out, so a caller can traverse the result
+        // without knowing which implementation produced it.
+        helper.toFirst();
         return helper;
     }
 
@@ -268,20 +288,20 @@ public class MatrixGraph implements Graph {
      * - Business context: Used by client code and algorithms that need to
      *   reference a specific, known vertex, such as when constructing
      *   edges or initiating traversal from a designated starting point.
-     * - Processing steps: Iterates over every element of the vertices
-     *   array (using an enhanced for-loop) and compares the supplied
-     *   identifier against each vertex's identifier until a match is
-     *   found or the array is exhausted.
+     * - Processing steps: Iterates over the occupied prefix of the vertices
+     *   array and compares the supplied identifier against each vertex's
+     *   identifier until a match is found or the prefix is exhausted.
      * - Assumptions: Assumes vertex identifiers are unique within the
-     *   graph. Because the iteration covers the entire array rather than
-     *   being bounded by vertexCount, this method relies on unused
-     *   trailing slots being null; invoking getID() on a null slot would
-     *   otherwise raise a NullPointerException, though such slots are
-     *   expected to remain null until populated.
+     *   graph. The iteration is bounded by vertexCount rather than by the
+     *   array length, because the trailing capacity holds null and reading
+     *   an identifier from it would raise a NullPointerException; that
+     *   applies from the very first call, since addVertex consults this
+     *   method to reject duplicates while the array is still mostly empty.
      * - Side effects: None; this method does not modify internal state.
      *
      * @param pID
-     * The unique identifier of the vertex to retrieve.
+     * The unique identifier of the vertex to retrieve. May be null, which
+     * matches no vertex and is answered with null.
      *
      * @return
      * The vertex matching the specified identifier, or null if no vertex
@@ -289,9 +309,16 @@ public class MatrixGraph implements Graph {
      */
     public Vertex getVertex(String pID) {
 
-        // Iterate over every vertex slot in the array, comparing
-        // identifiers to locate the requested vertex.
-        for (Vertex vertex : vertices) {
+        // A null identifier cannot match a stored vertex; answering it here
+        // also keeps the comparison below free of a null receiver.
+        if (pID == null) {
+            return null;
+        }
+
+        // Iterate over the occupied prefix only, comparing identifiers to
+        // locate the requested vertex.
+        for (int i = 0; i < vertexCount; i++) {
+            Vertex vertex = vertices[i];
             if (pID.equals(vertex.getID())) {
                 // Match found; return the vertex immediately.
                 return vertex;
@@ -471,6 +498,11 @@ public class MatrixGraph implements Graph {
         }
 
         // Return the accumulated list of edges.
+        // Position the cursor on the first element so that the returned
+        // list is immediately iterable. Both Graph implementations do this
+        // for every list they hand out, so a caller can traverse the result
+        // without knowing which implementation produced it.
+        result.toFirst();
         return result;
     }
 
@@ -522,6 +554,11 @@ public class MatrixGraph implements Graph {
         }
 
         // Return the accumulated list of connected edges.
+        // Position the cursor on the first element so that the returned
+        // list is immediately iterable. Both Graph implementations do this
+        // for every list they hand out, so a caller can traverse the result
+        // without knowing which implementation produced it.
+        result.toFirst();
         return result;
     }
 
@@ -909,6 +946,11 @@ public class MatrixGraph implements Graph {
         }
 
         // Return the accumulated list of neighboring vertices.
+        // Position the cursor on the first element so that the returned
+        // list is immediately iterable. Both Graph implementations do this
+        // for every list they hand out, so a caller can traverse the result
+        // without knowing which implementation produced it.
+        result.toFirst();
         return result;
     }
 
