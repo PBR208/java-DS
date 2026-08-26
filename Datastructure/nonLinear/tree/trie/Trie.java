@@ -355,4 +355,85 @@ public class Trie<ContentType> {
 
         return currentNode;
     }
+
+    /**
+     * Associates the specified value with the specified key, creating whatever
+     * part of the path does not exist yet.
+     *
+     * Detailed explanation of:
+     * - Purpose: Adds a key to the trie, or replaces the value of a key that is
+     *   already present.
+     * - Business context: Serves as the primary entry point for populating the
+     *   structure. Nodes are shared with every key that has the same prefix, so
+     *   inserting a key that extends or overlaps existing keys allocates only
+     *   the nodes for the characters that are genuinely new.
+     * - Processing steps:
+     *   1. Reject a null key or a null value, consistent with the rest of this
+     *      library.
+     *   2. Descend from the root, creating and linking a node for any character
+     *      whose child does not exist yet.
+     *   3. Attach the value at the terminal node, counting the key only when
+     *      that node did not already carry one.
+     * - Assumptions: Assumes the caller treats the trie as a map, so that
+     *   inserting an existing key is intended as a replacement rather than as a
+     *   duplicate entry.
+     * - Side effects: Allocates one node per genuinely new character, mutates
+     *   the child chains along the path, and increments the key count when the
+     *   key was not previously present.
+     *
+     * Time complexity: O(k) in the length of the key, times the bounded
+     * per-level chain scan. Independent of the number of keys already stored.
+     * Space complexity: O(k) worst case, when no prefix of the key is shared
+     * with anything already present; O(1) when the whole path already exists.
+     *
+     * @param pKey
+     * The key to store. Must not be null; a null key is ignored rather than
+     * raising an exception. The empty string is a legitimate key and terminates
+     * at the root. Any character is accepted, since the child representation
+     * imposes no alphabet restriction.
+     *
+     * @param pValue
+     * The value to associate with the key. Must not be null; a null value is
+     * ignored, because the value field doubles as the marker distinguishing a
+     * stored key from a mere prefix, and storing null would make the two
+     * indistinguishable. Callers needing a value-less set of words can store any
+     * constant here.
+     */
+    public void insert(String pKey, ContentType pValue) {
+        // Reject arguments that the structure cannot represent. A null value in
+        // particular would be read back as "this prefix is not a key".
+        if (pKey == null || pValue == null) {
+            return;
+        }
+
+        // Descend from the empty prefix, extending the path as required.
+        TrieNode currentNode = root;
+
+        for (int index = 0; index < pKey.length(); index++) {
+            char character = pKey.charAt(index);
+
+            // Reuse the existing branch whenever this prefix is already present,
+            // which is what makes keys with common prefixes share their nodes.
+            TrieNode child = findChild(currentNode, character);
+
+            if (child == null) {
+                // This character extends the trie into new territory.
+                child = new TrieNode(character);
+                linkChild(currentNode, child);
+            }
+
+            currentNode = child;
+        }
+
+        // A node that carries no value yet represents a prefix that was not
+        // previously a key, so this insertion genuinely adds an entry. When a
+        // value is already present the key is merely being re-mapped and the
+        // count must not move.
+        if (currentNode.value == null) {
+            size++;
+        }
+
+        // Attach the value, which simultaneously marks this node as terminal.
+        currentNode.value = pValue;
+    }
 }
