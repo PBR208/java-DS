@@ -43,7 +43,7 @@ The goal of this project is to:
 - [x] Heap (Min/Max Heap)  
 - [ ] Trie (Prefix Tree)  
 - [x] Segment Tree  
-- [ ] Fenwick Tree (Binary Indexed Tree)  
+- [x] Fenwick Tree (Binary Indexed Tree)  
 - [ ] Disjoint Set (Union-Find)
 
 ---

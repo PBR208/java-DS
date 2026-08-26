@@ -67,6 +67,29 @@ package nonLinear.tree.fenwickTree;
  * one exist solely in the arithmetic of the indices, and no reference, recursion
  * or node object is stored anywhere.
  *
+ * Complexity summary, with n as the number of covered positions and an O(1)
+ * group operation:
+ * - construction: O(n), whether the tree starts neutral or is built from values
+ * - prefix: O(log n)
+ * - range: O(log n), two prefix walks and one removal
+ * - add: O(log n)
+ * - set: O(log n), a read followed by an addition
+ * - get: O(log n)
+ * - size, isEmpty: O(1)
+ * - overall space: O(n); exactly one slot per position plus the reserved slot
+ *
+ * The bounds match those of a segment tree operation for operation, so the case
+ * for this structure rests on the constants and on the memory rather than on the
+ * asymptotics: one array slot per position instead of close to four, iterative
+ * bit arithmetic instead of a recursive descent, and no explicit range bounds to
+ * carry along. What it gives up for that is generality. Every answer over a range
+ * that does not start at the beginning is obtained by removing one prefix from
+ * another, so the aggregate must have an inverse, and the blocks are merged in an
+ * order dictated by the indices rather than by the positions, so it must be
+ * commutative as well. Minimum, maximum and concatenation satisfy neither
+ * requirement and belong in a segment tree; sums, counts and exclusive-or folds
+ * satisfy both and belong here.
+ *
  * @param <ContentType>
  * The type of the stored values and of the aggregates derived from them. No
  * ordering or comparison capability is required of this type; every operation on
