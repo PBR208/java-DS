@@ -134,6 +134,19 @@ public class Heap<ContentType extends ComparableContent<ContentType>> {
     private static final int SHRINK_THRESHOLD_DIVISOR = 4;
 
     /**
+     * Number of children each node of the implicit tree has.
+     *
+     * This is the branching factor of the binary heap and it appears in the
+     * index formulas that relate a node to its parent and children. It is
+     * deliberately a separate constant from GROWTH_FACTOR even though both
+     * currently hold the value two: the two express unrelated facts, one about
+     * the shape of the tree and one about the array resizing policy, and sharing
+     * a single constant would silently corrupt the index arithmetic if the
+     * resizing policy were ever retuned.
+     */
+    private static final int CHILDREN_PER_NODE = 2;
+
+    /**
      * Lower bound for the length of the backing array.
      *
      * Repeated shrinking must never reach zero, because a zero-length array can
@@ -270,5 +283,214 @@ public class Heap<ContentType extends ComparableContent<ContentType>> {
         // A freshly allocated heap holds no elements, so the next insertion
         // writes to index zero, which is the root of the implicit tree.
         size = 0;
+    }
+
+    /**
+     * Returns the array index of the parent of the node at the specified index.
+     *
+     * Detailed explanation of:
+     * - Purpose: Encodes one half of the implicit tree structure. Because the
+     *   heap is a complete binary tree laid out in level order, the parent of a
+     *   node can be computed arithmetically instead of being stored, which is
+     *   the entire reason this structure needs no child or parent references.
+     * - Business context: Concentrating the arithmetic in named helpers rather
+     *   than inlining the expressions is what keeps the sift procedures
+     *   readable; an off-by-one in these formulas is otherwise extremely hard to
+     *   spot, since a subtly wrong index still addresses a valid array slot.
+     * - Processing steps: Subtracts one from the index before halving, which is
+     *   what accounts for the root living at index zero rather than at index
+     *   one. Integer division then discards the remainder, so both children of a
+     *   node map back to the same parent.
+     * - Assumptions: Assumes the supplied index is greater than zero. The root
+     *   has no parent, and the formula would yield a meaningless result for it,
+     *   so every call site guards the root case explicitly.
+     * - Side effects: None; this is a pure computation.
+     *
+     * Time complexity: O(1); one subtraction and one shift-equivalent division.
+     * Space complexity: O(1); no allocation occurs.
+     *
+     * @param pIndex
+     * Index of the node whose parent is wanted. Must be greater than zero and
+     * less than the current size.
+     *
+     * @return
+     * Index of the parent node, always strictly less than pIndex, which is what
+     * guarantees the upward sift terminates.
+     */
+    private int parentIndex(int pIndex) {
+        // The minus one compensates for the zero-based root; without it the two
+        // children of a node would map to different parents.
+        return (pIndex - 1) / CHILDREN_PER_NODE;
+    }
+
+    /**
+     * Returns the array index of the left child of the node at the specified
+     * index.
+     *
+     * Detailed explanation of:
+     * - Purpose: Encodes the downward half of the implicit tree structure, used
+     *   by the downward sift to decide where a demoted element should travel.
+     * - Business context: See parentIndex; the same reasoning about naming the
+     *   arithmetic applies.
+     * - Processing steps: Doubles the index and adds one, which is the level
+     *   order position of the left child when the root sits at index zero.
+     * - Assumptions: Assumes the caller checks the returned index against the
+     *   current size before using it. The formula is defined for any index, but
+     *   a result at or beyond the size denotes a child that does not exist.
+     * - Side effects: None; this is a pure computation.
+     *
+     * Time complexity: O(1); one multiplication and one addition.
+     * Space complexity: O(1); no allocation occurs.
+     *
+     * @param pIndex
+     * Index of the node whose left child is wanted. Must be non-negative.
+     *
+     * @return
+     * Index at which the left child would reside. May be at or beyond the
+     * current size, which the caller must interpret as "no such child".
+     */
+    private int leftChildIndex(int pIndex) {
+        return CHILDREN_PER_NODE * pIndex + 1;
+    }
+
+    /**
+     * Returns the array index of the right child of the node at the specified
+     * index.
+     *
+     * Detailed explanation of:
+     * - Purpose: Completes the downward half of the implicit tree structure.
+     * - Business context: See parentIndex.
+     * - Processing steps: Doubles the index and adds two, placing the right
+     *   child immediately after the left one in level order.
+     * - Assumptions: As for leftChildIndex, the caller must check the result
+     *   against the current size before treating it as an existing node.
+     * - Side effects: None; this is a pure computation.
+     *
+     * Time complexity: O(1); one multiplication and one addition.
+     * Space complexity: O(1); no allocation occurs.
+     *
+     * @param pIndex
+     * Index of the node whose right child is wanted. Must be non-negative.
+     *
+     * @return
+     * Index at which the right child would reside. May be at or beyond the
+     * current size, which the caller must interpret as "no such child".
+     */
+    private int rightChildIndex(int pIndex) {
+        return CHILDREN_PER_NODE * pIndex + 2;
+    }
+
+    /**
+     * Reads the element stored at the specified index.
+     *
+     * Detailed explanation of:
+     * - Purpose: Confines the unchecked cast from the erased backing array to a
+     *   single accessor, so that the type-safety argument has to be made and
+     *   audited in exactly one place rather than at every read site.
+     * - Business context: The heap performs a great many reads during sifting,
+     *   and scattering casts across those call sites would obscure both the
+     *   algorithm and the one assumption that makes the casts sound.
+     * - Processing steps: Reads the slot and casts it to the content type.
+     * - Assumptions: Assumes every occupied slot below the current size holds a
+     *   ContentType instance. This holds because insert is the only method that
+     *   writes payloads into the array and it accepts ContentType exclusively;
+     *   the bulk constructor writes elements taken from a ContentType array.
+     * - Side effects: None; this method only reads.
+     *
+     * Time complexity: O(1); a single indexed read.
+     * Space complexity: O(1); no allocation occurs.
+     *
+     * @param pIndex
+     * Index to read. Must be non-negative and less than the current size; slots
+     * at or beyond the size are cleared and would yield null.
+     *
+     * @return
+     * The element stored at that index, never null for an index below the
+     * current size.
+     */
+    @SuppressWarnings("unchecked")
+    private ContentType elementAt(int pIndex) {
+        // The cast is sound because insert and the bulk constructor are the only
+        // writers of payload slots and both accept ContentType exclusively.
+        return (ContentType) elements[pIndex];
+    }
+
+    /**
+     * Determines whether one element takes precedence over another under this
+     * heap's ordering direction.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the single point at which the minimum-first and
+     *   maximum-first behaviours diverge. Every other line of this class is
+     *   written in terms of "takes precedence" and is therefore direction
+     *   agnostic, which is what allows one implementation to serve both
+     *   variants.
+     * - Business context: Isolating the direction here means a reader verifying
+     *   the sift procedures never has to reason about two orderings at once, and
+     *   a future third ordering could be added without touching the algorithms.
+     * - Processing steps: Consults the direction recorded at construction and
+     *   delegates to the corresponding ComparableContent comparison.
+     * - Assumptions: Assumes the comparison methods are consistent with one
+     *   another and transitive. An inconsistent ordering does not corrupt the
+     *   array, but it makes the resulting element positions arbitrary, and the
+     *   root would then no longer be the extreme element.
+     * - Side effects: None; this method only reads.
+     *
+     * Time complexity: O(1) plus the cost of the content type's own comparison.
+     * Space complexity: O(1); no allocation occurs.
+     *
+     * @param pCandidate
+     * The element being tested for precedence. Must not be null.
+     *
+     * @param pReference
+     * The element it is being tested against. Must not be null.
+     *
+     * @return
+     * True when pCandidate must sit above pReference in the heap. Elements that
+     * compare equal yield false, which is deliberate: equal elements may be
+     * stored in either order, and reporting no precedence avoids the pointless
+     * swaps that an inclusive comparison would perform.
+     */
+    private boolean hasPriority(ContentType pCandidate, ContentType pReference) {
+        if (order == Order.MIN) {
+            // A minimum-heap promotes the smaller element towards the root.
+            return pCandidate.isLess(pReference);
+        }
+
+        // A maximum-heap promotes the larger element towards the root.
+        return pCandidate.isGreater(pReference);
+    }
+
+    /**
+     * Exchanges the elements stored at two indices.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the single mutation primitive used by both sift
+     *   procedures, so that the movement of elements through the array happens
+     *   in one auditable place.
+     * - Business context: A heap repairs itself entirely by exchanging a node
+     *   with a neighbour along one root-to-leaf path; naming that step makes the
+     *   sift procedures read as the walks they are.
+     * - Processing steps: Holds one slot in a temporary reference while the
+     *   other is copied across, then writes the held value back.
+     * - Assumptions: Assumes both indices are within the occupied region. The
+     *   two indices may be equal, in which case the exchange is a harmless
+     *   no-operation.
+     * - Side effects: Mutates two slots of the backing array.
+     *
+     * Time complexity: O(1); three reference assignments.
+     * Space complexity: O(1); one temporary reference.
+     *
+     * @param pFirstIndex
+     * Index of the first slot. Must be non-negative and less than the size.
+     *
+     * @param pSecondIndex
+     * Index of the second slot. Must be non-negative and less than the size.
+     */
+    private void swap(int pFirstIndex, int pSecondIndex) {
+        // Hold one value so that neither is lost while the slots are rewritten.
+        Object held = elements[pFirstIndex];
+        elements[pFirstIndex] = elements[pSecondIndex];
+        elements[pSecondIndex] = held;
     }
 }
