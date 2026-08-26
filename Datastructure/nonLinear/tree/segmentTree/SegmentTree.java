@@ -698,4 +698,87 @@ public class SegmentTree<ContentType> {
                 nodeAt(rightChildIndex(pNodeIndex)));
     }
 
+    /**
+     * Reports the value currently stored at the specified position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Gives callers read access to the individual elements, which the
+     *   tree otherwise only ever exposes in aggregated form.
+     * - Business context: The tree keeps no copy of the array it was built from,
+     *   so the leaves are the only remaining record of the individual values, and
+     *   update changes them without the caller seeing the result. Exposing them
+     *   makes a tree self-contained, which matters for callers that read a value
+     *   in order to derive the next one they write.
+     * - Processing steps: Delegates to the range query over the single requested
+     *   position, which lands on exactly the leaf holding it.
+     * - Assumptions: Assumes the caller accepts the descent cost rather than
+     *   keeping a parallel copy of the array; a caller reading positions in bulk
+     *   is better served by retaining the array it built the tree from.
+     * - Side effects: None; this operation only reads cached aggregates.
+     *
+     * @param pIndex
+     * Position to read. Must be non-negative and less than the number of covered
+     * positions.
+     *
+     * @return
+     * The value stored at that position, or null when the position lies outside
+     * the covered range, including every position of a tree covering none. Null
+     * is unambiguous here for the same reason as in query: no null value is ever
+     * stored.
+     */
+    public ContentType get(int pIndex) {
+        /*
+         * A single position is just a range of width one, and the descent for it
+         * ends at the leaf holding that position. Reusing the query keeps the
+         * bounds validation and the traversal rules in one place rather than
+         * duplicating a second descent that could drift from the first.
+         */
+        return query(pIndex, pIndex);
+    }
+
+    /**
+     * Reports how many positions the tree covers.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes the fixed width of the tree, which bounds every valid
+     *   index accepted by query, update and get.
+     * - Business context: Callers commonly iterate over positions or query the
+     *   full range, and both require this bound. It counts positions, not the
+     *   nodes used to cache aggregates over them: a tree over ten positions
+     *   reports ten while holding close to twenty aggregates.
+     * - Processing steps: Returns the count recorded at construction, which
+     *   cannot change afterwards because the node layout was derived from it.
+     * - Assumptions: None.
+     * - Side effects: None; this operation only reads a field.
+     *
+     * @return
+     * The number of covered positions, never negative. Zero exactly when the tree
+     * was built from an empty array.
+     */
+    public int size() {
+        return size;
+    }
+
+    /**
+     * Reports whether the tree covers no positions at all.
+     *
+     * Detailed explanation of:
+     * - Purpose: Lets callers distinguish a tree that can answer questions from
+     *   one that cannot, without interpreting a null result.
+     * - Business context: An empty tree arises only from construction over an
+     *   empty array and stays empty for its entire lifetime, since the structure
+     *   has no operation that adds positions. Checking this once is therefore
+     *   more meaningful than checking for a null answer on every query.
+     * - Processing steps: Compares the recorded position count against zero.
+     * - Assumptions: None.
+     * - Side effects: None; this operation only reads a field.
+     *
+     * @return
+     * True when the tree covers no positions and every query, update and get is
+     * consequently without effect; false when at least one position is covered.
+     */
+    public boolean isEmpty() {
+        return size == 0;
+    }
+
 }
