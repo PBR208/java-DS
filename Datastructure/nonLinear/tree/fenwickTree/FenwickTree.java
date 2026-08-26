@@ -574,4 +574,139 @@ public class FenwickTree<ContentType> {
         return group.difference(includingPrefix, precedingPrefix);
     }
 
+    /**
+     * Merges the specified change into the value stored at a position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Applies a relative change to one position and carries it into
+     *   every fragment whose block contains that position, so that all later
+     *   queries reflect it.
+     * - Business context: This is the writing half of the idea the structure is
+     *   named for and the operation the accumulating use of a Fenwick tree is
+     *   built on: counters are raised, frequencies are incremented, running totals
+     *   are adjusted. A position is contained in one block per bit of its index,
+     *   so only that many fragments can have become stale, and the walk visits
+     *   exactly them. Note that the change is expressed relatively rather than
+     *   absolutely, which is what allows this operation to avoid reading anything:
+     *   it never needs to know what the position held before.
+     * - Processing steps:
+     *   1. Ignore a position outside the covered range and a null change, neither
+     *      of which describes something the tree could apply.
+     *   2. Starting at the slot of the position, merge the change into the current
+     *      slot and advance by its lowest set bit, which lands on the next larger
+     *      block containing the position, until the walk leaves the tree.
+     * - Assumptions: Assumes the group is commutative, as its contract demands.
+     *   The change is merged into fragments that already aggregate positions on
+     *   both sides of the changed one, so no merge order could reflect the
+     *   sequence order here.
+     * - Side effects: Rewrites one fragment per set bit of the translated index
+     *   and leaves all remaining fragments untouched.
+     *
+     * Time complexity: O(log n); the index gains one bit per step, so the walk
+     * leaves the tree after at most as many steps as n has bits.
+     * Space complexity: O(1); the walk is iterative and allocates nothing.
+     *
+     * @param pIndex
+     * Position to change. Must be non-negative and less than the number of
+     * covered positions; a position outside that range is silently ignored,
+     * consistent with the tolerant write behaviour of the other structures in
+     * this library.
+     *
+     * @param pDelta
+     * The change to merge into that position, expressed in the same terms as the
+     * stored values: for a sum this is the amount to add, for an exclusive-or fold
+     * the mask to apply. Must not be null; a null change is ignored, because
+     * storing it would hand null to the group on the next merge. Passing the
+     * neutral element is permitted and leaves the tree unchanged, apart from the
+     * work of the walk.
+     */
+    public void add(int pIndex, ContentType pDelta) {
+        // Reject a position the tree does not cover. The size comparison also
+        // rules out every position of a tree covering none.
+        if (pIndex < 0 || pIndex >= size) {
+            return;
+        }
+
+        // Reject null early: it would enter the fragments and make every later
+        // query touching them fail inside the group.
+        if (pDelta == null) {
+            return;
+        }
+
+        /*
+         * Walk upwards through the blocks containing this position. Adding the
+         * lowest set bit carries that bit into the next higher position of the
+         * index, which is precisely the slot whose block swallows the current one,
+         * so every affected fragment is visited exactly once and none is visited
+         * twice.
+         */
+        for (int currentIndex = pIndex + INDEX_BASE_OFFSET; currentIndex <= size;
+                currentIndex += lowestSetBit(currentIndex)) {
+            fragments[currentIndex] = group.combine(fragmentAt(currentIndex), pDelta);
+        }
+    }
+
+    /**
+     * Replaces the value stored at the specified position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Establishes an absolute value at a position, in contrast to the
+     *   relative change that add applies.
+     * - Business context: Callers holding a sequence rather than a set of counters
+     *   think in terms of assignment, and expressing that assignment in terms of
+     *   the tree's relative machinery is awkward enough to be worth doing once
+     *   here rather than at every call site. The reason it cannot be done directly
+     *   is structural: no fragment describes a single position on its own once its
+     *   index carries more than one bit, so a value cannot simply be written
+     *   somewhere. Instead the change that turns the old value into the new one is
+     *   computed and then absorbed exactly as any other change would be.
+     * - Processing steps:
+     *   1. Ignore a position outside the covered range and a null value.
+     *   2. Read what the position currently holds.
+     *   3. Determine the change that leads from that value to the requested one,
+     *      and apply it through the ordinary upward walk.
+     * - Assumptions: Assumes the group's inverse is exact, since the change is
+     *   derived by removing the old value from the new one. Approximate inverses
+     *   accumulate error here just as they do in range queries.
+     * - Side effects: Rewrites one fragment per set bit of the translated index.
+     *
+     * Time complexity: O(log n); one range read of that cost followed by one
+     * upward walk of the same, which is a constant factor above add and still
+     * logarithmic overall.
+     * Space complexity: O(1); both parts are iterative.
+     *
+     * @param pIndex
+     * Position whose value is replaced. Must be non-negative and less than the
+     * number of covered positions; an out-of-range position is silently ignored.
+     *
+     * @param pValue
+     * The new value for that position. Must not be null; a null value is ignored,
+     * for the same reason as in add.
+     */
+    public void set(int pIndex, ContentType pValue) {
+        // Reject a position the tree does not cover before reading anything.
+        if (pIndex < 0 || pIndex >= size) {
+            return;
+        }
+
+        // Reject null early, so that no null can reach the group.
+        if (pValue == null) {
+            return;
+        }
+
+        // What the position holds today, obtained as the range covering it alone.
+        ContentType currentValue = range(pIndex, pIndex);
+
+        /*
+         * The change that turns the current value into the requested one. Removing
+         * the old value from the new one yields exactly that change, because the
+         * group's inverse undoes its merge by contract.
+         */
+        ContentType delta = group.difference(pValue, currentValue);
+
+        // Absorb the change through the ordinary upward walk, which keeps the
+        // propagation logic in one place.
+        add(pIndex, delta);
+    }
+
 }
