@@ -409,4 +409,163 @@ public class SegmentTree<ContentType> {
                 nodeAt(rightChildIndex(pNodeIndex)));
     }
 
+    /**
+     * Reports the aggregate over the specified range of positions.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the question the structure exists for, namely what the
+     *   maintained aggregate is over an arbitrary contiguous span of positions,
+     *   without inspecting the elements that span contains.
+     * - Business context: Serves as the primary read entry point. The answer is
+     *   assembled from at most two cached ranges per level of the tree, which is
+     *   what keeps the cost logarithmic no matter how wide the requested range
+     *   is: a query covering the entire array is answered by a single node.
+     * - Processing steps:
+     *   1. Reject a range that no position could satisfy, reporting the absence
+     *      of an answer through null.
+     *   2. Descend from the root, which covers every position, and let the
+     *      recursion assemble the answer.
+     * - Assumptions: Assumes the caller uses inclusive bounds, matching the way
+     *   ranges are described throughout this class.
+     * - Side effects: None; this operation only reads cached aggregates.
+     *
+     * @param pFromIndex
+     * First position of the range, inclusive. Must be non-negative and must not
+     * exceed pToIndex.
+     *
+     * @param pToIndex
+     * Last position of the range, inclusive. Must be less than the number of
+     * positions the tree covers.
+     *
+     * @return
+     * The aggregate over the requested range, or null when the range is empty,
+     * reversed, or reaches outside the covered positions, and likewise for every
+     * query against a tree covering no positions at all. Null is unambiguous as
+     * that marker because the tree neither stores nor produces null aggregates:
+     * construction rejects null elements and the combiner is contractually
+     * forbidden from returning null. Reporting an invalid range this way rather
+     * than by exception follows the convention of the read operations elsewhere
+     * in this library, where an unanswerable question yields null instead of
+     * interrupting the caller.
+     */
+    public ContentType query(int pFromIndex, int pToIndex) {
+        /*
+         * Reject anything that cannot describe a real span of stored positions:
+         * a negative start, an end beyond the covered positions, or bounds in the
+         * wrong order. The size check also covers the empty tree, where no index
+         * can be valid at all.
+         */
+        if (pFromIndex < 0 || pToIndex >= size || pFromIndex > pToIndex) {
+            return null;
+        }
+
+        // Start at the root, whose range spans every position, so that the
+        // descent can narrow down to the requested span from a node guaranteed to
+        // contain it.
+        return queryRange(ROOT_INDEX, 0, size - 1, pFromIndex, pToIndex);
+    }
+
+    /**
+     * Recursively assembles the aggregate over a requested range from the cached
+     * ranges that cover it.
+     *
+     * Detailed explanation of:
+     * - Purpose: Decomposes the requested range into the smallest number of
+     *   cached ranges whose union is exactly that range, and merges their
+     *   aggregates in positional order.
+     * - Business context: This method is the reason a segment tree beats a scan.
+     *   Each level of the recursion contributes at most two nodes that are only
+     *   partially covered, because a partially covered node can only occur at the
+     *   two ends of the requested range; everything between those ends is served
+     *   by whole cached nodes. The number of visited nodes is therefore bounded
+     *   by a constant per level, and the levels are logarithmic in the position
+     *   count.
+     * - Processing steps:
+     *   1. Report no contribution when the node range and the requested range do
+     *      not overlap at all.
+     *   2. Report the cached aggregate directly when the node range lies entirely
+     *      inside the requested range, which is the step that avoids descending
+     *      into the elements.
+     *   3. Otherwise split, recurse into both halves, and merge whatever the two
+     *      sides contributed.
+     * - Assumptions: Assumes the requested range was already validated against
+     *   the covered positions by the public entry point, so the recursion is
+     *   concerned only with overlap and never with legality.
+     * - Side effects: None; this method only reads cached aggregates.
+     *
+     * @param pNodeIndex
+     * Index of the node currently visited.
+     *
+     * @param pRangeStart
+     * First position covered by that node.
+     *
+     * @param pRangeEnd
+     * Last position covered by that node, inclusive.
+     *
+     * @param pFromIndex
+     * First position of the requested range, inclusive.
+     *
+     * @param pToIndex
+     * Last position of the requested range, inclusive.
+     *
+     * @return
+     * The aggregate of the overlap between the node range and the requested
+     * range, or null when the two do not overlap. Returning null for an absent
+     * contribution is what frees this implementation from requiring a neutral
+     * element from the combiner: a caller merging sums could supply zero, but a
+     * caller merging minima would have to invent an artificial infinity for their
+     * content type, and demanding that would restrict the aggregates this class
+     * can serve for no benefit. The two null checks below cost one comparison per
+     * merge and remove that restriction entirely.
+     */
+    private ContentType queryRange(int pNodeIndex, int pRangeStart, int pRangeEnd, int pFromIndex, int pToIndex) {
+        /*
+         * The node covers positions entirely outside the requested range, so
+         * nothing below it can contribute and the subtree is abandoned. Pruning
+         * here rather than at the parent keeps the overlap test in one place.
+         */
+        if (pToIndex < pRangeStart || pFromIndex > pRangeEnd) {
+            return null;
+        }
+
+        /*
+         * The node range lies wholly inside the requested range, so its cached
+         * aggregate is exactly the contribution of this subtree and the elements
+         * below need not be visited. This early return is the entire performance
+         * argument of the structure.
+         */
+        if (pFromIndex <= pRangeStart && pRangeEnd <= pToIndex) {
+            return nodeAt(pNodeIndex);
+        }
+
+        // The overlap is partial, so the answer has to be assembled from both
+        // halves of this node using the same split the build used.
+        int middle = middleIndex(pRangeStart, pRangeEnd);
+
+        // Collect the contribution of the lower half, which may be absent when
+        // the requested range begins beyond the midpoint.
+        ContentType leftResult = queryRange(leftChildIndex(pNodeIndex), pRangeStart, middle, pFromIndex, pToIndex);
+
+        // Collect the contribution of the upper half, which may be absent when
+        // the requested range ends at or before the midpoint.
+        ContentType rightResult = queryRange(rightChildIndex(pNodeIndex), middle + 1, pRangeEnd, pFromIndex, pToIndex);
+
+        // Only the upper half contributed, so its aggregate stands unchanged;
+        // merging it with an absent contribution would require a neutral element
+        // that this implementation deliberately does not demand.
+        if (leftResult == null) {
+            return rightResult;
+        }
+
+        // Only the lower half contributed, for the mirrored reason.
+        if (rightResult == null) {
+            return leftResult;
+        }
+
+        // Both halves contributed, and the lower one is passed first so that the
+        // combiner receives the two aggregates in the order their positions
+        // appear in the array.
+        return combiner.combine(leftResult, rightResult);
+    }
+
 }
