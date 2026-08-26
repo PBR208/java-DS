@@ -62,6 +62,24 @@ import linear.list.SinglyLinkedList;
  * trees in this package, and as the reference implementation demonstrating that
  * a search structure need not be built on pairwise comparison at all.
  *
+ * Complexity summary, with k as the length of the key or prefix involved, n as
+ * the number of stored keys and m as the size of a matching subtree:
+ * - insert, search, containsKey, startsWith, remove: O(k), each multiplied by a
+ *   per-level child scan that is bounded by the alphabet actually in use
+ * - keysWithPrefix: O(k + m) plus the cost of materialising each matching key
+ * - isEmpty, size: O(1)
+ * - overall space: O(total length of all stored keys), reduced by the sharing of
+ *   common prefixes; the worst case of entirely dissimilar keys stores one node
+ *   per character
+ *
+ * The property worth noting is what does NOT appear in those bounds: n. Lookup
+ * cost depends on the length of the key alone, so a trie holding a million words
+ * answers a five-character query in the same time as one holding ten. The price
+ * is memory, since a comparison tree stores one node per key while a trie stores
+ * up to one node per character. Removal therefore prunes every node it renders
+ * purposeless, which keeps that price proportional to what is actually stored
+ * and is also what keeps startsWith honest.
+ *
  * @param <ContentType>
  * The type of value associated with each stored key. No ordering or comparison
  * capability is required of this type, since the trie derives its entire
