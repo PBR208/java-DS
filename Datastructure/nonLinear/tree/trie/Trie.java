@@ -793,4 +793,134 @@ public class Trie<ContentType> {
         // surviving structure and cannot keep former siblings reachable.
         pChild.nextSibling = null;
     }
+
+    /**
+     * Collects every stored key that begins with the specified prefix.
+     *
+     * Detailed explanation of:
+     * - Purpose: Produces the actual completions of a prefix, which is the
+     *   operation a trie exists to make cheap and which startsWith only answers
+     *   as a yes or no.
+     * - Business context: This is the autocomplete primitive. The work is
+     *   proportional to the size of the matching subtree rather than to the size
+     *   of the whole dictionary, because the descent to the prefix isolates
+     *   exactly the branch that can contain matches before any collecting
+     *   begins. A hash table would have to examine every key it holds.
+     * - Processing steps: Descends to the node representing the prefix, then
+     *   walks the subtree below it, extending a running buffer with each edge's
+     *   character and emitting the buffer whenever a value-carrying node is
+     *   reached. An absent prefix yields an empty list rather than null.
+     * - Assumptions: Assumes the returned list is the caller's to consume; it
+     *   shares no state with the trie, so later mutations of the trie do not
+     *   affect it and vice versa.
+     * - Side effects: Allocates the result list and one string per matching key.
+     *
+     * Time complexity: O(p + m) where p is the prefix length and m is the total
+     * size of the matching subtree, plus the cost of materialising each key.
+     * Independent of the number of stored keys that do not match.
+     * Space complexity: O(h) for the recursion stack and the character buffer,
+     * where h is the length of the longest matching key, plus the result itself.
+     *
+     * @param pPrefix
+     * The prefix to complete. Must not be null; null yields an empty list. The
+     * empty string matches every stored key and therefore returns all of them.
+     *
+     * @return
+     * A list of the matching keys, each a complete key rather than the remaining
+     * suffix. Empty when nothing matches. Never null. The order is unspecified
+     * and reflects the internal child order, which insertion does not preserve;
+     * callers needing a defined order must sort the result themselves.
+     */
+    public SinglyLinkedList<String> keysWithPrefix(String pPrefix) {
+        // The result is built even for degenerate input, so that callers can
+        // iterate unconditionally without a null check.
+        SinglyLinkedList<String> matches = new SinglyLinkedList<>();
+
+        // A null prefix matches nothing.
+        if (pPrefix == null) {
+            return matches;
+        }
+
+        // Isolate the branch that can contain matches. Everything outside it is
+        // never examined, which is where the efficiency of this operation comes
+        // from.
+        TrieNode branchRoot = findNode(pPrefix);
+
+        if (branchRoot == null) {
+            // No stored key carries this prefix.
+            return matches;
+        }
+
+        // Seed the buffer with the prefix itself, because the subtree walk below
+        // only contributes the characters that follow it.
+        StringBuilder keyBuffer = new StringBuilder(pPrefix);
+
+        collectKeys(branchRoot, keyBuffer, matches);
+
+        // Position the cursor at the first element so the result is immediately
+        // iterable, matching the convention the graph implementations follow for
+        // the lists they hand out.
+        matches.toFirst();
+
+        return matches;
+    }
+
+    /**
+     * Walks the subtree below the given node, appending every complete key it
+     * finds to the supplied collection.
+     *
+     * Detailed explanation of:
+     * - Purpose: Implements the depth-first collection underlying
+     *   keysWithPrefix.
+     * - Business context: A single mutable buffer is threaded through the whole
+     *   walk rather than building a fresh string at every level, because the
+     *   keys in a subtree overwhelmingly share their leading characters and
+     *   rebuilding those repeatedly would make collection quadratic in the key
+     *   length.
+     * - Processing steps: Emits the buffer as a finished key when the current
+     *   node carries a value, then visits each child in turn, appending that
+     *   child's character before descending and removing it again afterwards.
+     *   That removal is what keeps the buffer consistent for the next sibling:
+     *   without it, each branch would inherit the characters of the branch
+     *   explored before it.
+     * - Assumptions: Assumes the buffer already spells the path from the root to
+     *   the current node, which the caller establishes by seeding it with the
+     *   prefix.
+     * - Side effects: Appends to the supplied collection and temporarily mutates
+     *   the buffer, which is restored to its incoming state before returning.
+     *
+     * @param pNode
+     * Root of the subtree to walk. Must not be null.
+     *
+     * @param pKeyBuffer
+     * Running buffer spelling the path from the trie root to pNode. Mutated
+     * during the walk and restored before this method returns.
+     *
+     * @param pMatches
+     * Collection receiving each complete key found. Must not be null.
+     */
+    private void collectKeys(TrieNode pNode, StringBuilder pKeyBuffer,
+            SinglyLinkedList<String> pMatches) {
+
+        // A value marks the buffer as spelling a complete stored key. The prefix
+        // itself is emitted here when it happens to be a key in its own right.
+        if (pNode.value != null) {
+            pMatches.append(pKeyBuffer.toString());
+        }
+
+        // Visit every child, extending the buffer by one character per level.
+        TrieNode child = pNode.firstChild;
+
+        while (child != null) {
+            pKeyBuffer.append(child.character);
+
+            collectKeys(child, pKeyBuffer, pMatches);
+
+            // Undo this level's contribution so that the next sibling starts
+            // from the same prefix this call was entered with.
+            pKeyBuffer.deleteCharAt(pKeyBuffer.length() - 1);
+
+            child = child.nextSibling;
+        }
+    }
 }
