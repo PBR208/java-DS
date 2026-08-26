@@ -436,4 +436,181 @@ public class Trie<ContentType> {
         // Attach the value, which simultaneously marks this node as terminal.
         currentNode.value = pValue;
     }
+
+    /**
+     * Retrieves the value associated with the specified key.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the map question, returning what was stored under a
+     *   key.
+     * - Business context: The cost depends only on the length of the key, never
+     *   on how many keys the trie holds, which is the property that makes a trie
+     *   attractive for dictionary lookups over very large word sets.
+     * - Processing steps: Descends to the node representing the key and reports
+     *   its value, which is null precisely when the descent ended on a node that
+     *   represents a prefix rather than a stored key.
+     * - Assumptions: Assumes the caller distinguishes absence from a stored
+     *   null; this cannot arise, since insert refuses null values.
+     * - Side effects: None; searching does not modify the trie.
+     *
+     * Time complexity: O(k) in the length of the key.
+     * Space complexity: O(1); the descent is iterative.
+     *
+     * @param pKey
+     * The key to look up. Must not be null; null is answered with null rather
+     * than raising an exception. The empty string is a valid key.
+     *
+     * @return
+     * The value stored under the key, or null when the key is absent, when the
+     * string names a prefix that is not itself a key, or when pKey is null.
+     */
+    public ContentType search(String pKey) {
+        // A null key cannot name a path through the trie.
+        if (pKey == null) {
+            return null;
+        }
+
+        TrieNode terminal = findNode(pKey);
+
+        // Reaching a node proves the prefix exists; only a value proves the
+        // prefix is a stored key.
+        if (terminal == null) {
+            return null;
+        }
+
+        return terminal.value;
+    }
+
+    /**
+     * Determines whether the specified key is stored in this trie.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers membership directly, for callers that care whether a
+     *   word is present rather than what it maps to.
+     * - Business context: Because insert refuses null values, this is equivalent
+     *   to testing the result of search against null. It exists as a separate
+     *   method because membership is the question a trie is most often asked,
+     *   and expressing it as a boolean reads better at the call site than a null
+     *   comparison whose significance the reader has to reconstruct.
+     * - Processing steps: Delegates to search and tests the result.
+     * - Assumptions: Relies on the invariant that a stored key always carries a
+     *   non-null value.
+     * - Side effects: None; this method does not modify the trie.
+     *
+     * Time complexity: O(k) in the length of the key.
+     * Space complexity: O(1).
+     *
+     * @param pKey
+     * The key to test. Must not be null; null is reported as absent.
+     *
+     * @return
+     * True when the key was inserted and not since removed; false otherwise,
+     * including when the string is merely a prefix of stored keys.
+     */
+    public boolean containsKey(String pKey) {
+        return search(pKey) != null;
+    }
+
+    /**
+     * Determines whether any stored key begins with the specified prefix.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the question that distinguishes a trie from a hash
+     *   table, which can locate a key but cannot report on prefixes without
+     *   inspecting every entry it holds.
+     * - Business context: This is the operation behind autocomplete and
+     *   incremental search, where each additional character typed must be
+     *   answered without rescanning the dictionary. It is also the cheap
+     *   rejection test that lets a caller abandon a search path early, which is
+     *   how a trie accelerates word puzzles and constrained searches.
+     * - Processing steps: Descends to the node representing the prefix. Merely
+     *   reaching that node is the answer: nodes exist only because some key
+     *   caused them to be created, and removal prunes any node that has stopped
+     *   contributing to a key, so a reachable node always lies on the path of at
+     *   least one stored key.
+     * - Assumptions: Relies on the pruning performed by remove. Without it, a
+     *   node left behind by a deleted key would make this method report a prefix
+     *   that no stored key actually has.
+     * - Side effects: None; this method does not modify the trie.
+     *
+     * Time complexity: O(p) in the length of the prefix, and notably independent
+     * of how many keys share it.
+     * Space complexity: O(1); the descent is iterative.
+     *
+     * @param pPrefix
+     * The prefix to test. Must not be null; null is reported as absent. The
+     * empty string is a prefix of every key and therefore reports true whenever
+     * the trie holds anything at all.
+     *
+     * @return
+     * True when at least one stored key begins with the prefix, which includes
+     * the case where the prefix is itself a stored key.
+     */
+    public boolean startsWith(String pPrefix) {
+        // A null prefix cannot name a path through the trie.
+        if (pPrefix == null) {
+            return false;
+        }
+
+        // An empty trie has no keys, so nothing can begin with any prefix. This
+        // has to be tested explicitly because the empty prefix always reaches
+        // the root, which exists even when no key does.
+        if (isEmpty()) {
+            return false;
+        }
+
+        // Reaching the node is sufficient: pruning guarantees every reachable
+        // node lies on the path of at least one stored key.
+        return findNode(pPrefix) != null;
+    }
+
+    /**
+     * Determines whether this trie currently stores no keys.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the guard callers use before draining or reporting on
+     *   the structure.
+     * - Business context: Emptiness is a statement about keys, not about nodes.
+     *   The root always exists, so testing the structure itself would report a
+     *   trie as non-empty even before anything was inserted.
+     * - Processing steps: Compares the key counter against zero.
+     * - Assumptions: Assumes insert and remove keep the counter in step with the
+     *   number of value-carrying nodes.
+     * - Side effects: None; this method does not modify the trie.
+     *
+     * Time complexity: O(1); a single counter comparison.
+     * Space complexity: O(1).
+     *
+     * @return
+     * True when no key is stored, false as soon as at least one key has been
+     * inserted and not since removed.
+     */
+    public boolean isEmpty() {
+        return size == 0;
+    }
+
+    /**
+     * Returns the number of keys currently stored in this trie.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes the entry count without walking the structure.
+     * - Business context: The count is of keys, not of nodes: one key of length
+     *   ten occupies up to ten nodes but counts once, and prefixes that are not
+     *   themselves keys do not count at all. Callers sizing an output buffer
+     *   before collecting keys need exactly this quantity.
+     * - Processing steps: Returns the incrementally maintained counter.
+     * - Assumptions: Assumes insert counts only genuinely new keys and remove
+     *   only genuinely present ones, which both establish by inspecting the
+     *   terminal node's value before adjusting the counter.
+     * - Side effects: None; this method does not modify the trie.
+     *
+     * Time complexity: O(1); the count is maintained incrementally.
+     * Space complexity: O(1).
+     *
+     * @return
+     * Key count, zero for an empty trie and never negative.
+     */
+    public int size() {
+        return size;
+    }
 }
