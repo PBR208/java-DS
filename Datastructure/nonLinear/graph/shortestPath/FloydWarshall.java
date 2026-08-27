@@ -603,4 +603,167 @@ public class FloydWarshall {
         return NO_VERTEX;
     }
 
+    /**
+     * Reports whether the graph contains a cycle of negative total weight.
+     *
+     * Detailed explanation of:
+     * - Purpose: States whether the graph contains the one structure that makes
+     *   the shortest-path question unanswerable for part of the table.
+     * - Business context: This is the check a cautious caller makes before
+     *   trusting any entry, and for some callers the finding itself, for instance
+     *   when the weights are gains and losses and such a cycle means a sequence
+     *   that can be repeated for unbounded profit. Unlike the single-source
+     *   algorithms of this package, which only see what their source can reach,
+     *   this one answers for the whole graph, which makes it the natural way to
+     *   ask whether a graph contains such a cycle anywhere at all.
+     * - Processing steps: Returns the flag established during construction.
+     * - Assumptions: None.
+     * - Side effects: None.
+     *
+     * Time complexity: O(1); the flag is held as a field.
+     * Space complexity: O(1).
+     *
+     * @return
+     * True when at least one vertex can leave and return to itself for a negative
+     * total, false when every route in the graph has a lower bound, in which case
+     * every reported distance is a finite total over a real route or the
+     * unreachable marker.
+     */
+    public boolean hasNegativeCycle() {
+        return negativeCycleFound;
+    }
+
+    /**
+     * Reports the total weight of the cheapest route from one vertex to another.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the question the table was computed for, for one ordered
+     *   pair.
+     * - Business context: This is the number a caller compares, sums or ranks, in
+     *   whatever unit the edge weights are kept in. The order of the two arguments
+     *   matters over a directed graph, where the route back may be longer, may
+     *   cost differently, or may not exist at all; over an undirected graph the
+     *   two orders always agree. Because negative weights are permitted, the value
+     *   may itself be negative, which is an ordinary result and not to be confused
+     *   with the unbounded value that marks the absence of a cheapest route.
+     * - Processing steps: Locates both vertices in the snapshot and reads the
+     *   table entry for that pair.
+     * - Assumptions: Assumes vertices are compared by identity, so a detached
+     *   vertex carrying a familiar identifier is reported as unreachable rather
+     *   than answered for.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v) in the number of vertices, for the two lookups; the
+     * table access itself is constant, which is the property this algorithm is
+     * chosen for.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pFromVertex
+     * The vertex the route starts at. May be null or foreign to the graph the
+     * table was computed over, both of which are answered as unreachable.
+     *
+     * @param pToVertex
+     * The vertex the route ends at. May be null or foreign, with the same result.
+     *
+     * @return
+     * The total weight of the cheapest route between the two, which is zero when
+     * both are the same vertex and may be negative when negative weights are
+     * present; UNREACHABLE when no route connects them, which includes a vertex
+     * that was not part of the graph; or UNBOUNDED when a negative cycle lies on a
+     * route between them, so that no cheapest route exists.
+     */
+    public double getDistance(Vertex pFromVertex, Vertex pToVertex) {
+        int originIndex = indexOf(pFromVertex);
+        int destinationIndex = indexOf(pToVertex);
+
+        /*
+         * A vertex outside the snapshot has no row and no column, and the
+         * unreachable marker is the truthful answer for it: this table knows no
+         * route to or from it.
+         */
+        if (originIndex == NO_VERTEX || destinationIndex == NO_VERTEX) {
+            return UNREACHABLE;
+        }
+
+        return distances[originIndex][destinationIndex];
+    }
+
+    /**
+     * Reports whether any route leads from one vertex to another.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the existence of a route without the caller having to
+     *   interpret a distance.
+     * - Business context: Comparing a returned distance against infinity is easy
+     *   to write incorrectly, so the test is offered as its own operation. Over the
+     *   whole table it is also the transitive closure of the graph, which is a
+     *   question of its own: asked for every pair, it says which vertices can
+     *   influence which. A pair spoiled by a negative cycle counts as connected
+     *   here, because it genuinely is; there is merely no cheapest route among the
+     *   many that exist.
+     * - Processing steps: Compares the table entry against the unreachable marker.
+     * - Assumptions: Assumes no genuine route has infinite total weight, which
+     *   holds because edge weights are finite and a route has finitely many edges.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v), dominated by the two vertex lookups.
+     * Space complexity: O(1).
+     *
+     * @param pFromVertex
+     * The vertex the route would start at. May be null or foreign to the graph,
+     * both of which are reported as not connected.
+     *
+     * @param pToVertex
+     * The vertex the route would end at. May be null or foreign, with the same
+     * result.
+     *
+     * @return
+     * True when at least one route leads from the first vertex to the second,
+     * which includes a vertex and itself and every pair spoiled by a negative
+     * cycle; false otherwise.
+     */
+    public boolean isReachable(Vertex pFromVertex, Vertex pToVertex) {
+        return getDistance(pFromVertex, pToVertex) < UNREACHABLE;
+    }
+
+    /**
+     * Reports whether a pair has no cheapest route because a negative cycle lies
+     * between its two vertices.
+     *
+     * Detailed explanation of:
+     * - Purpose: Distinguishes the pairs the table cannot give a number for from
+     *   those it can.
+     * - Business context: A caller reading the table pair by pair needs this per
+     *   pair, not merely the graph-wide answer, since a single negative cycle
+     *   usually spoils a region of the table and leaves the rest perfectly usable.
+     *   Testing it explicitly is also clearer at a call site than comparing a
+     *   distance against negative infinity, and it keeps the meaning of that value
+     *   in one place.
+     * - Processing steps: Compares the table entry against the unbounded value.
+     * - Assumptions: Assumes the detection during construction marked every
+     *   affected pair, which it does by checking each pair against every vertex
+     *   sitting on a negative cycle.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v), dominated by the two vertex lookups.
+     * Space complexity: O(1).
+     *
+     * @param pFromVertex
+     * The vertex the route would start at. May be null or foreign to the graph,
+     * neither of which is unbounded, since neither is connected in the first
+     * place.
+     *
+     * @param pToVertex
+     * The vertex the route would end at. May be null or foreign, with the same
+     * result.
+     *
+     * @return
+     * True when routes between the two can be made arbitrarily cheap and no
+     * cheapest one exists; false for every pair with a genuine distance and for
+     * every pair no route connects.
+     */
+    public boolean isUnbounded(Vertex pFromVertex, Vertex pToVertex) {
+        return getDistance(pFromVertex, pToVertex) == UNBOUNDED;
+    }
+
 }
