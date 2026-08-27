@@ -55,7 +55,7 @@ The goal of this project is to:
 - [x] Directed Graph Implementation  
 - [x] Undirected Graph Implementation  
 - [x] Weighted Graph Implementation  
-- [ ] Graph Traversals (BFS, DFS)  
+- [x] Graph Traversals (BFS, DFS)  
 - [ ] Dijkstra’s Shortest Path Algorithm  
 - [ ] Bellman-Ford Algorithm  
 - [ ] Floyd-Warshall Algorithm  
