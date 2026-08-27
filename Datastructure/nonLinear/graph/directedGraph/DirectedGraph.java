@@ -1281,4 +1281,90 @@ public class DirectedGraph implements Graph {
         return vertices.isEmpty();
     }
 
+    /**
+     * Builds a new graph over the same vertices in which every arc runs the
+     * opposite way.
+     *
+     * Detailed explanation of:
+     * - Purpose: Produces the reversal of this graph, in which the successors of a
+     *   vertex are its predecessors here and the other way round.
+     * - Business context: Reversal is the standard way to turn a question about
+     *   what leads into a vertex into the question about what leads out of one,
+     *   so that an algorithm written for the forward direction can answer it
+     *   unchanged. The vertices that can reach a target are the vertices reachable
+     *   from it in the reversal; the second pass of the classical search for
+     *   strongly connected components runs over the reversal for exactly this
+     *   reason; and a shortest-path search towards a fixed target is a search away
+     *   from it once the arcs are turned around. Offering it here rather than
+     *   leaving each algorithm to build its own keeps the endpoint convention of
+     *   this class in one place, since reversing an arc means nothing more than
+     *   reading that convention backwards.
+     * - Processing steps:
+     *   1. Create an empty graph and register the same vertex instances in it.
+     *   2. Walk the arc list and add, for each arc, a new arc from its head to its
+     *      tail carrying the same weight.
+     * - Assumptions: Assumes that reversing a graph whose arcs are all legal
+     *   yields a graph whose arcs are all legal, which holds because the
+     *   restrictions this class places on an arc, distinct endpoints and no second
+     *   arc in the same direction between the same pair, are unaffected by
+     *   exchanging the two ends.
+     * - Side effects: Allocates a new graph and one new arc per arc of this one,
+     *   and moves both cursors of this graph. This graph itself is not modified, so
+     *   the reversal is a second view rather than a replacement.
+     *
+     * The vertices are shared rather than copied, which is deliberate and has one
+     * consequence worth stating plainly: a mark set while traversing the reversal
+     * is set on the same vertex instances this graph holds, so the two graphs share
+     * their visitation state. That is precisely what a two-pass algorithm over a
+     * graph and its reversal needs, since it wants to recognise in the second pass
+     * the vertices it settled in the first, but a caller running two unrelated
+     * traversals over the two graphs must clear the marks between them. The arcs,
+     * by contrast, cannot be shared: an Edge fixes the order of its endpoints at
+     * construction, and that order is what carries the direction here.
+     *
+     * Time complexity: O(v * v + a * (v + a)); every vertex is registered, which
+     * scans the growing vertex list for a collision, and every arc is inserted,
+     * which validates its endpoints and checks for a duplicate. The bound is a
+     * consequence of the flat list storage rather than of the reversal itself,
+     * which examines each arc exactly once.
+     * Space complexity: O(v + a) for the new graph, holding one list entry per
+     * vertex and one new arc per arc; the vertices themselves are not duplicated.
+     *
+     * @return
+     * A new directed graph holding the same vertex instances as this one and,
+     * for every arc of this one, the opposing arc of equal weight. Empty when this
+     * graph is empty. Never null, and never the same instance as this graph.
+     */
+    public DirectedGraph transposed() {
+        DirectedGraph reversal = new DirectedGraph();
+
+        /*
+         * Register the vertices first, since an arc is only accepted once both of
+         * its endpoints are known to the graph it is added to. The instances are
+         * shared, which is what makes the marks common to both graphs.
+         */
+        vertices.toFirst();
+        while (vertices.hasAccess()) {
+            reversal.addVertex(vertices.getContent());
+            vertices.next();
+        }
+
+        // Turn each arc around. The weight is carried over unchanged, since
+        // reversal is about direction alone and a caller wanting different costs
+        // in the two directions models them as two separate arcs here.
+        arcs.toFirst();
+        while (arcs.hasAccess()) {
+            Edge arc = arcs.getContent();
+            Vertex[] endpoints = arc.getVertices();
+
+            // Exchanging the two endpoints is the entire reversal: the head of the
+            // original arc becomes the tail of the new one.
+            reversal.addEdge(new Edge(endpoints[HEAD_INDEX], endpoints[TAIL_INDEX], arc.getWeight()));
+
+            arcs.next();
+        }
+
+        return reversal;
+    }
+
 }
