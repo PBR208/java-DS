@@ -736,4 +736,225 @@ public class BellmanFord {
         return NO_VERTEX;
     }
 
+    /**
+     * Reports the vertex every distance and route of this result is measured
+     * from.
+     *
+     * Detailed explanation of:
+     * - Purpose: Names the source the computation was run from.
+     * - Business context: A result is only meaningful together with its source,
+     *   and a caller holding one result per source needs to tell them apart
+     *   without keeping that association itself. It is also what makes a
+     *   reconstructed route recognisable as complete, since a route ends exactly
+     *   when it arrives here.
+     * - Processing steps: Returns the vertex recorded at construction.
+     * - Assumptions: None.
+     * - Side effects: None.
+     *
+     * Time complexity: O(1).
+     * Space complexity: O(1).
+     *
+     * @return
+     * The source vertex, which is the instance the graph held at construction.
+     * Never null, since the constructor refuses any other source.
+     */
+    public Vertex getSource() {
+        return sourceVertex;
+    }
+
+    /**
+     * Reports whether a cycle of negative total weight lies on a route out of the
+     * source.
+     *
+     * Detailed explanation of:
+     * - Purpose: States whether the graph contains the one structure that makes
+     *   the shortest-path question unanswerable for part of it.
+     * - Business context: This is the second reason to choose this algorithm over
+     *   the greedy search of this package, and for some callers the first: the
+     *   presence of such a cycle is itself the finding, for instance when the
+     *   weights are gains and losses and a cycle of negative total weight means a
+     *   sequence that can be repeated for unbounded profit. It is also the check a
+     *   cautious caller makes before trusting any distance, since a graph may hold
+     *   such a cycle in one corner and ordinary routes everywhere else.
+     * - Processing steps: Returns the flag established during construction.
+     * - Assumptions: None.
+     * - Side effects: None.
+     *
+     * Only cycles the source can reach are reported. A negative cycle sitting in a
+     * part of the graph no route from the source leads into cannot lower any
+     * distance this instance holds, so reporting it would describe the graph
+     * rather than this result; a caller wanting that broader question answered
+     * runs the algorithm from a vertex reaching everything, or once per component.
+     *
+     * Time complexity: O(1); the flag is held as a field.
+     * Space complexity: O(1).
+     *
+     * @return
+     * True when at least one vertex reachable from the source has no cheapest
+     * route because a negative cycle lies before it; false when every reachable
+     * vertex has a genuine cheapest route, in which case every reported distance
+     * is a finite total over a real route.
+     */
+    public boolean hasNegativeCycle() {
+        return negativeCycleFound;
+    }
+
+    /**
+     * Reports the total weight of the cheapest route from the source to the
+     * specified vertex.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the question the computation was run for, for one vertex.
+     * - Business context: This is the number a caller compares, sums or ranks, in
+     *   whatever unit the edge weights are kept in. Because negative weights are
+     *   permitted, it may itself be negative, which is a perfectly ordinary result
+     *   and not to be confused with the unbounded value that marks the absence of
+     *   a cheapest route.
+     * - Processing steps: Locates the vertex in the snapshot and returns its
+     *   recorded distance.
+     * - Assumptions: Assumes the vertex is compared by identity, so a detached
+     *   vertex carrying a familiar identifier is reported as unreachable rather
+     *   than answered for.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v) in the number of vertices, for the lookup of the
+     * vertex within the snapshot.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pVertex
+     * The vertex to report the distance of. May be null or foreign to the graph
+     * the computation ran over, both of which are answered as unreachable.
+     *
+     * @return
+     * The total weight of the cheapest route from the source, which is zero for
+     * the source itself and may be negative when negative weights are present;
+     * UNREACHABLE when no route leads there, which includes a vertex that was not
+     * part of the searched graph; or UNBOUNDED when a negative cycle lies on every
+     * route to it, so that no cheapest route exists.
+     */
+    public double getDistance(Vertex pVertex) {
+        int index = indexOf(pVertex);
+
+        // A vertex outside the snapshot has no recorded distance, and the
+        // unreachable marker is the truthful answer for it: this result knows no
+        // route to it.
+        if (index == NO_VERTEX) {
+            return UNREACHABLE;
+        }
+
+        return distances[index];
+    }
+
+    /**
+     * Reports whether any route leads from the source to the specified vertex.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the existence of a route without the caller having to
+     *   interpret a distance.
+     * - Business context: Comparing a returned distance against infinity is easy
+     *   to write incorrectly, so the test is offered as its own operation. A vertex
+     *   behind a negative cycle counts as reachable here, because it genuinely is:
+     *   routes to it exist, there is merely no cheapest one among them. That is
+     *   the distinction the unbounded value exists to preserve, and a caller
+     *   interested in it asks separately.
+     * - Processing steps: Compares the recorded distance against the unreachable
+     *   marker.
+     * - Assumptions: Assumes no genuine route has infinite total weight, which
+     *   holds because edge weights are finite and a route has finitely many edges.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v), dominated by the vertex lookup.
+     * Space complexity: O(1).
+     *
+     * @param pVertex
+     * The vertex to test. May be null or foreign to the searched graph, both of
+     * which are reported as not reachable.
+     *
+     * @return
+     * True when at least one route leads from the source to the vertex, which
+     * includes the source itself and every vertex behind a negative cycle; false
+     * otherwise.
+     */
+    public boolean isReachable(Vertex pVertex) {
+        return getDistance(pVertex) < UNREACHABLE;
+    }
+
+    /**
+     * Reports whether the specified vertex has no cheapest route because a
+     * negative cycle lies before it.
+     *
+     * Detailed explanation of:
+     * - Purpose: Distinguishes the vertices the result cannot give a number for
+     *   from those it can.
+     * - Business context: A caller processing distances one vertex at a time needs
+     *   this per vertex, not merely the graph-wide answer, since a single negative
+     *   cycle usually spoils part of a graph and leaves the rest perfectly usable.
+     *   Testing it explicitly is also clearer at a call site than comparing a
+     *   distance against negative infinity, and it keeps the meaning of that value
+     *   in one place.
+     * - Processing steps: Compares the recorded distance against the unbounded
+     *   value.
+     * - Assumptions: Assumes the detection during construction marked every
+     *   affected vertex, which it does by spreading the mark along the arcs until
+     *   it stops spreading.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v), dominated by the vertex lookup.
+     * Space complexity: O(1).
+     *
+     * @param pVertex
+     * The vertex to test. May be null or foreign to the searched graph, neither of
+     * which is unbounded, since neither is reachable in the first place.
+     *
+     * @return
+     * True when routes to the vertex can be made arbitrarily cheap and no
+     * cheapest one exists; false for every vertex with a genuine distance and for
+     * every vertex no route reaches.
+     */
+    public boolean isUnbounded(Vertex pVertex) {
+        return getDistance(pVertex) == UNBOUNDED;
+    }
+
+    /**
+     * Reports the vertex immediately before the specified one on its cheapest
+     * route from the source.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes one link of the tree of cheapest routes.
+     * - Business context: The predecessors are how routes are stored at all, one
+     *   vertex per vertex rather than one route per vertex, which keeps the result
+     *   linear in the size of the graph. This operation serves callers walking the
+     *   tree themselves, for instance to find where two routes diverge; callers
+     *   wanting a whole route ask for the path instead.
+     * - Processing steps: Locates the vertex in the snapshot and returns the
+     *   predecessor recorded for it.
+     * - Assumptions: Assumes the predecessor chain of a vertex with a finite
+     *   distance leads back to the source without repeating a vertex, which holds
+     *   because every chain running through a negative cycle was cleared during
+     *   the detection.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v), dominated by the vertex lookup.
+     * Space complexity: O(1).
+     *
+     * @param pVertex
+     * The vertex whose predecessor is wanted. May be null or foreign to the
+     * searched graph, both of which are answered with none.
+     *
+     * @return
+     * The vertex the given one is best reached through, or null when it is the
+     * source, when no route reaches it, when its distance is unbounded, or when it
+     * was not part of the searched graph. Null therefore means the route does not
+     * continue, not that something went wrong.
+     */
+    public Vertex getPredecessor(Vertex pVertex) {
+        int index = indexOf(pVertex);
+
+        if (index == NO_VERTEX) {
+            return null;
+        }
+
+        return predecessors[index];
+    }
+
 }
