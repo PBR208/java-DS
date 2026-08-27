@@ -550,4 +550,141 @@ public class DisjointSet {
         return firstRepresentative == secondRepresentative;
     }
 
+    /**
+     * Reports how many elements share a group with the given element.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes the size of one part of the partition, counted including
+     *   the element the question was asked about.
+     * - Business context: The size of a group is the property callers ask for once
+     *   the merging is done, typically to find the largest connected component of
+     *   a graph, to check whether a graph has become connected as a whole, or to
+     *   weight a component in a later decision. It is answered from a counter
+     *   maintained during merging rather than by counting members, because the
+     *   representation never holds the members of a group in any enumerable form.
+     * - Processing steps: Looks the representative up and reads the count recorded
+     *   for it, having first ruled out an element outside the universe.
+     * - Assumptions: Assumes the count recorded for a representative describes its
+     *   whole group, which the merge maintains by carrying the count of an
+     *   absorbed group over to the surviving representative.
+     * - Side effects: None on the partition, though the lookup flattens the path
+     *   it walks.
+     *
+     * Time complexity: O(alpha(n)) amortised, dominated by the lookup; the count
+     * itself is a single array read.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pElement
+     * The element whose group is to be measured. Must be non-negative and less
+     * than the number of covered elements.
+     *
+     * @return
+     * The number of elements in the group containing pElement, which is at least
+     * one for any element of the universe, since an element is always a member of
+     * its own group, or zero when the identifier lies outside the universe. Zero
+     * is unambiguous as that marker precisely because no real group can be empty.
+     */
+    public int sizeOf(int pElement) {
+        int representative = find(pElement);
+
+        // An element outside the universe is in no group, and a group of no
+        // elements is the one answer a genuine group can never give.
+        if (representative == NO_REPRESENTATIVE) {
+            return 0;
+        }
+
+        // Only the representative carries a count describing the whole group; the
+        // counts of absorbed representatives are stale by design.
+        return setSizes[representative];
+    }
+
+    /**
+     * Reports how many groups the universe is currently divided into.
+     *
+     * Detailed explanation of:
+     * - Purpose: Describes the partition as a whole rather than one part of it.
+     * - Business context: This is the value that turns the structure into a
+     *   connectivity test for an entire graph: after every edge has been merged
+     *   in, the graph is connected exactly when a single group remains, and the
+     *   count is otherwise the number of connected components. Watching it drop is
+     *   also how the minimum spanning tree algorithm of Kruskal knows it may stop
+     *   early, since a spanning tree is complete as soon as one group is left.
+     * - Processing steps: Returns the count maintained by the merge, which is
+     *   raised to the number of elements at construction and lowered by one for
+     *   every merge joining two genuinely different groups.
+     * - Assumptions: Assumes the merge is the only operation changing the
+     *   partition, which holds because the structure offers no way to separate
+     *   groups again.
+     * - Side effects: None; this operation only reads a field.
+     *
+     * Time complexity: O(1); the count is held as a field rather than derived by
+     * scanning for self-referencing elements.
+     * Space complexity: O(1).
+     *
+     * @return
+     * The number of groups, which equals the number of elements before anything
+     * has been merged, is at least one for a non-empty universe, and is zero
+     * exactly when the universe holds no elements at all.
+     */
+    public int setCount() {
+        return disjointSetCount;
+    }
+
+    /**
+     * Reports how many elements the universe covers.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes the fixed size of the universe, which bounds every
+     *   identifier the operations accept.
+     * - Business context: Callers commonly iterate over all elements, for instance
+     *   to group them by representative for reporting, and need this bound to do
+     *   so. It also lets a caller distinguish the two reasons a merge can report
+     *   that nothing happened, by validating the identifiers against it
+     *   beforehand. Note that this counts elements and not groups, the two being
+     *   equal only until the first merge takes effect.
+     * - Processing steps: Reports the length of the parent array, which was fixed
+     *   at construction and cannot change afterwards.
+     * - Assumptions: None.
+     * - Side effects: None; this operation only reads an array length.
+     *
+     * Time complexity: O(1).
+     * Space complexity: O(1).
+     *
+     * @return
+     * The number of covered elements, never negative, and zero exactly when the
+     * structure was constructed over an empty universe.
+     */
+    public int size() {
+        return parents.length;
+    }
+
+    /**
+     * Reports whether the universe contains no elements at all.
+     *
+     * Detailed explanation of:
+     * - Purpose: Lets callers distinguish a structure that can answer questions
+     *   from one that cannot, without interpreting the markers the individual
+     *   operations return.
+     * - Business context: An empty universe arises only from construction over a
+     *   size of zero and stays empty for the whole lifetime of the instance, since
+     *   there is no operation adding elements. Checking it once is therefore more
+     *   meaningful than checking every answer against a marker. Note that this
+     *   reports the absence of elements and not the absence of merges: a structure
+     *   over ten elements that have never been merged is not empty in this sense,
+     *   because all ten elements exist and are each a group of their own.
+     * - Processing steps: Compares the number of covered elements against zero.
+     * - Assumptions: None.
+     * - Side effects: None; this operation only reads an array length.
+     *
+     * Time complexity: O(1); a single comparison.
+     * Space complexity: O(1).
+     *
+     * @return
+     * True when no element is covered and every operation is consequently without
+     * effect; false when at least one element exists.
+     */
+    public boolean isEmpty() {
+        return parents.length == 0;
+    }
+
 }
