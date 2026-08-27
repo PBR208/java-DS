@@ -77,6 +77,37 @@ import linear.list.SinglyLinkedList;
  * together makes the trade explicit that the choice between the two algorithms
  * always is: an assumption about the weights, bought with a factor of the number
  * of vertices in running time.
+ *
+ * Complexity summary, with v as the number of vertices, e as the number of edges,
+ * a as the number of arcs, n as the cost the underlying representation charges
+ * for one neighbour query and m as the cost of one edge lookup:
+ * - construction, which performs the whole computation: O(v * n + a * (v + m))
+ *   for reading the graph into the arc list, plus O(v * a) for the relaxation
+ *   rounds and the same again, at worst, for the cycle detection
+ * - getSource, hasNegativeCycle: O(1)
+ * - getDistance, isReachable, isUnbounded, getPredecessor: O(v), the lookup of
+ *   the vertex in the snapshot
+ * - getPath: O(k * v) for a route of k vertices
+ * - overall space: O(v + a); one distance, one predecessor and one snapshot entry
+ *   per vertex, and three entries per arc
+ *
+ * The number of arcs is the number of edges over a directed graph and twice that
+ * over an undirected one, since an undirected edge may be travelled either way.
+ * The worst case of v rounds is rarely reached: a round that changes nothing ends
+ * the relaxation, and the detection sweep normally finds nothing and skips the
+ * spreading entirely.
+ *
+ * The comparison with the Dijkstra search of this package is less lopsided than
+ * the textbook figures suggest, and the reason is worth naming. That search asks
+ * the graph for neighbours and edge weights inside its inner loop, so it pays the
+ * representation's costs once per examined neighbour; this one pays them once,
+ * during the extraction, and then sweeps plain arrays. Over the representations
+ * of this package, where a neighbour query or an edge lookup examines an entire
+ * collection, that difference largely offsets the extra factor of v this
+ * algorithm carries. The reason to prefer the greedy search remains what it
+ * always was, that it settles each vertex once and never revisits it, and the
+ * reason to come here remains what it always was too: negative weights, and the
+ * negative cycles they make possible.
  */
 public class BellmanFord {
 

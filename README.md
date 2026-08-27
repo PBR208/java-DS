@@ -57,7 +57,7 @@ The goal of this project is to:
 - [x] Weighted Graph Implementation  
 - [x] Graph Traversals (BFS, DFS)  
 - [x] Dijkstra’s Shortest Path Algorithm  
-- [ ] Bellman-Ford Algorithm  
+- [x] Bellman-Ford Algorithm  
 - [ ] Floyd-Warshall Algorithm  
 - [ ] Topological Sorting  
 - [ ] Minimum Spanning Tree (Kruskal / Prim)
