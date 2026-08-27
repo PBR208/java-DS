@@ -1,6 +1,7 @@
 package nonLinear.graph.directedGraph;
 
 import nonLinear.graph.base.Edge;
+import nonLinear.graph.base.Graph;
 import nonLinear.graph.base.Vertex;
 
 import linear.list.SinglyLinkedList;
@@ -83,7 +84,7 @@ import linear.list.SinglyLinkedList;
  * neighbours of a vertex and receives, from this class, the vertices that can be
  * reached from it, and from the other two, the vertices it is connected to.
  */
-public class DirectedGraph {
+public class DirectedGraph implements Graph {
 
     /**
      * Position of the tail vertex within the endpoint pair of an arc.
@@ -1059,6 +1060,225 @@ public class DirectedGraph {
      */
     public int getInDegree(Vertex pVertex) {
         return countArcsWithEndpointAt(pVertex, HEAD_INDEX);
+    }
+
+    /**
+     * Retrieves the neighbours of the specified vertex, which in a directed graph
+     * are the vertices reachable from it in one step.
+     *
+     * Detailed explanation of:
+     * - Purpose: Fulfils the adjacency query of the graph contract with the
+     *   reading that direction forces on it.
+     * - Business context: This operation is what lets an algorithm written against
+     *   the contract run over this class unchanged, and the reading chosen here is
+     *   the one that keeps such an algorithm correct. A traversal asks for the
+     *   neighbours of a vertex in order to decide where it may go next, so in a
+     *   directed graph it must be told what the vertex leads to and not what leads
+     *   to it; answering with the predecessors as well would let the traversal
+     *   travel against the arcs and would report vertices as reachable that are
+     *   not. The consequence is that the neighbour relation is asymmetric here
+     *   while it is symmetric in the other two representations, and a caller that
+     *   depends on the symmetry rather than merely on the contract has to say so
+     *   by asking for the predecessors explicitly.
+     * - Processing steps: Delegates to the successor query, which is the same
+     *   question under the name the contract gives it.
+     * - Assumptions: None beyond the invariants of the graph.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs.
+     * Space complexity: O(k) for the returned list, where k is the out-degree of
+     * the vertex.
+     *
+     * @param pVertex
+     * The vertex whose neighbours are to be collected, compared by reference. May
+     * be null or foreign to this graph, in which case the result is empty.
+     *
+     * @return
+     * A new list holding every vertex reachable from the given one in a single
+     * step, positioned at its first element. Empty when nothing leaves the vertex,
+     * which for a sink is the case even though arcs may well arrive at it. Never
+     * null.
+     */
+    public SinglyLinkedList<Vertex> getNeighbours(Vertex pVertex) {
+        // Named differently by the contract, but the same question: what can be
+        // reached from here in one step.
+        return getSuccessors(pVertex);
+    }
+
+    /**
+     * Sets the mark of every vertex of this graph to the specified value.
+     *
+     * Detailed explanation of:
+     * - Purpose: Brings the visitation state of the whole vertex set to a known
+     *   value in one operation.
+     * - Business context: The marks live on the vertices rather than in the
+     *   algorithm reading them, so they carry over from one run to the next and
+     *   every traversal has to clear them before it starts. Offering the reset as
+     *   a graph operation is what keeps that obligation cheap and, more
+     *   importantly, complete: a traversal clearing only the vertices it happens to
+     *   visit would leave the graph in a state where the next run mistakes an
+     *   untouched vertex for a visited one.
+     * - Processing steps: Walks the vertex list and assigns the value to each
+     *   vertex.
+     * - Assumptions: Assumes no traversal is running at the same time, since this
+     *   operation would destroy the bookkeeping it depends on.
+     * - Side effects: Mutates every vertex of the graph and moves the vertex
+     *   cursor. The vertices are shared instances, so the change is visible to
+     *   every other holder of them, including another graph they also belong to.
+     *
+     * Time complexity: O(v) in the number of vertices.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pMark
+     * The mark to assign: true to mark every vertex as processed, false to clear
+     * the whole set, which is what a traversal does before it begins.
+     */
+    public void setAllVertexMarks(boolean pMark) {
+        vertices.toFirst();
+        while (vertices.hasAccess()) {
+            vertices.getContent().setMark(pMark);
+            vertices.next();
+        }
+    }
+
+    /**
+     * Sets the mark of every arc of this graph to the specified value.
+     *
+     * Detailed explanation of:
+     * - Purpose: Brings the processing state of the whole arc set to a known value
+     *   in one operation.
+     * - Business context: Arcs carry a mark of their own because several
+     *   algorithms record decisions about connections rather than about vertices,
+     *   a spanning structure keeping the arcs it accepted being the clearest
+     *   example. As with the vertex marks, the state outlives the run that set it,
+     *   so clearing the whole set beforehand is the only way to start from a known
+     *   position.
+     * - Processing steps: Walks the arc list and assigns the value to each arc.
+     * - Assumptions: Assumes no algorithm is relying on the current marks.
+     * - Side effects: Mutates every arc of the graph and moves the arc cursor.
+     *
+     * Time complexity: O(a) in the number of arcs.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pMark
+     * The mark to assign: true to mark every arc as processed, false to clear the
+     * whole set.
+     */
+    public void setAllEdgeMarks(boolean pMark) {
+        arcs.toFirst();
+        while (arcs.hasAccess()) {
+            arcs.getContent().setMark(pMark);
+            arcs.next();
+        }
+    }
+
+    /**
+     * Reports whether every vertex of this graph is currently marked.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers whether a run that marks what it processes has covered
+     *   the entire vertex set.
+     * - Business context: This is the termination test of an algorithm that
+     *   advances vertex by vertex, and in a directed graph it is also the test that
+     *   reveals something the undirected representations cannot produce: a
+     *   traversal started from one vertex can leave others unmarked even though the
+     *   graph is connected when the direction of its arcs is ignored, simply
+     *   because no arc leads to them. An unmarked remainder therefore means
+     *   unreachable from the start vertex here, rather than in a separate component.
+     * - Processing steps: Walks the vertex list and reports whether any vertex is
+     *   still unmarked.
+     * - Assumptions: Assumes the marks were cleared before the run whose progress
+     *   is being tested.
+     * - Side effects: Moves the vertex cursor; no state is changed.
+     *
+     * Time complexity: O(v) in the number of vertices. The scan stops at the first
+     * unmarked vertex, since one is enough to decide the question.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @return
+     * True when every vertex is marked, and also when the graph holds no vertices
+     * at all, there being nothing left unmarked in that case; false as soon as one
+     * vertex is unmarked.
+     */
+    public boolean allVerticesMarked() {
+        vertices.toFirst();
+        while (vertices.hasAccess()) {
+            // A single unmarked vertex settles the question, so the scan need not
+            // continue once one is found.
+            if (!vertices.getContent().isMarked()) {
+                return false;
+            }
+            vertices.next();
+        }
+
+        return true;
+    }
+
+    /**
+     * Reports whether every arc of this graph is currently marked.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers whether a run that marks the connections it processes has
+     *   covered the entire arc set.
+     * - Business context: The counterpart of the vertex test, used by algorithms
+     *   whose progress is measured in connections rather than in vertices. It is
+     *   also the honest way to ask whether a traversal has walked the whole graph:
+     *   marking every vertex only means each was reached by some arc, while marking
+     *   every arc means none was left unexamined.
+     * - Processing steps: Walks the arc list and reports whether any arc is still
+     *   unmarked.
+     * - Assumptions: Assumes the marks were cleared before the run whose progress
+     *   is being tested.
+     * - Side effects: Moves the arc cursor; no state is changed.
+     *
+     * Time complexity: O(a) in the number of arcs, stopping at the first unmarked
+     * arc.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @return
+     * True when every arc is marked, and also when the graph holds no arcs at all;
+     * false as soon as one arc is unmarked.
+     */
+    public boolean allEdgesMarked() {
+        arcs.toFirst();
+        while (arcs.hasAccess()) {
+            if (!arcs.getContent().isMarked()) {
+                return false;
+            }
+            arcs.next();
+        }
+
+        return true;
+    }
+
+    /**
+     * Reports whether this graph currently holds no vertices.
+     *
+     * Detailed explanation of:
+     * - Purpose: Lets callers recognise a graph there is nothing to do with,
+     *   without retrieving its vertex set to look at it.
+     * - Business context: Every algorithm over this package begins by choosing a
+     *   vertex to start from, and there is none to choose in an empty graph, so
+     *   this is the guard such an algorithm opens with. The test is deliberately
+     *   about vertices alone: a graph without arcs is not empty, since its vertices
+     *   still exist and can still be processed, whereas a graph without vertices
+     *   cannot hold an arc at all, insertion requiring both endpoints to be
+     *   registered.
+     * - Processing steps: Asks the vertex list whether it holds anything.
+     * - Assumptions: None.
+     * - Side effects: None; the cursor is not moved and no state is changed.
+     *
+     * Time complexity: O(1); the list answers this from its own first reference.
+     * Space complexity: O(1).
+     *
+     * @return
+     * True when the graph holds no vertices, and therefore no arcs either; false
+     * when at least one vertex is present, whether or not any arc connects it to
+     * anything.
+     */
+    public boolean isEmpty() {
+        return vertices.isEmpty();
     }
 
 }
