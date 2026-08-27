@@ -76,6 +76,41 @@ import linear.list.SinglyLinkedList;
  * package: both settle vertices in order of increasing distance from a source,
  * and they differ only in how distance is measured, which is why the queue that
  * suffices there becomes a repeated search for the nearest unsettled vertex here.
+ *
+ * Complexity summary, with v as the number of vertices, e as the number of edges,
+ * n as the cost the underlying representation charges for one neighbour query and
+ * m as the cost of one edge lookup:
+ * - construction, which performs the whole search: O(e + v * v + v * n +
+ *   e * (v + m)); the e term is the weight validation, the v * v term the repeated
+ *   selection of the nearest unsettled vertex, and the v per examined neighbour
+ *   the lookup of its position in the vertex snapshot
+ * - getSource: O(1)
+ * - getDistance, isReachable, getPredecessor: O(v), the lookup of the vertex
+ * - getPath: O(k * v) for a route of k vertices
+ * - overall space: O(v); one distance, one predecessor and one snapshot entry per
+ *   vertex, plus the record of settled vertices during the search
+ *
+ * Over the list-based representations of this package both the neighbour query and
+ * the edge lookup examine the whole edge collection, which makes a run
+ * O(v * e + e * e) there; over the adjacency matrix both are answered after
+ * locating the vertices, which that representation does by scanning its vertex
+ * array, giving O(v * v + e * v). The bound the algorithm is normally quoted
+ * with, O(v * v) with an array of distances or O(e log v) with a heap, assumes a
+ * representation handing back the neighbours of a vertex and the weight of an
+ * edge in constant or near-constant time, and describes the selection of the
+ * nearest vertex rather than the graph access that dominates here.
+ *
+ * The nearest unsettled vertex is found by scanning the distances rather than by
+ * keeping them in a priority queue, which deserves a word since the linear
+ * package of this library offers one. That queue orders by integer priority, and
+ * a distance here is a sum of floating-point weights: passing it through an
+ * integer would round it, and rounding a priority does not merely blur the order
+ * but settles vertices in the wrong one, which is precisely the error this
+ * algorithm has no defence against. A heap keyed by double would restore the
+ * O(e log v) bound, and building one is the natural next step for a caller who
+ * needs it; the scan is kept here because it is correct, because it is short
+ * enough to be read alongside the argument that justifies it, and because over
+ * the representations of this package it is not the dominant cost anyway.
  */
 public class Dijkstra {
 
