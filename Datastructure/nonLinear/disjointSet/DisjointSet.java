@@ -362,4 +362,192 @@ public class DisjointSet {
         return representative;
     }
 
+    /**
+     * Merges the groups containing the two given elements into a single group.
+     *
+     * Detailed explanation of:
+     * - Purpose: Replaces two groups of the partition by their union, leaving
+     *   every other group untouched.
+     * - Business context: This is the write half of the structure and the reason
+     *   it is preferred over recolouring every member of one group, which is what
+     *   a label-per-element representation would have to do. The return value is
+     *   as important as the merge itself and is what makes the operation directly
+     *   usable as a decision: an edge of an undirected graph closes a cycle
+     *   exactly when its two endpoints already share a group, so an algorithm
+     *   detecting cycles, or the minimum spanning tree algorithm of Kruskal
+     *   accepting or rejecting an edge, needs nothing beyond the answer to this
+     *   one call.
+     * - Processing steps:
+     *   1. Look up both representatives, which also rejects identifiers outside
+     *      the universe and flattens both paths.
+     *   2. Report that nothing happened when the two elements already share a
+     *      group.
+     *   3. Hang the representative of the shallower tree beneath the
+     *      representative of the deeper one.
+     *   4. Carry the member count over to the surviving representative, raise its
+     *      rank when both trees were equally deep, and record that one group fewer
+     *      remains.
+     * - Assumptions: Assumes that the ranks of both representatives are upper
+     *   bounds on the heights of their trees, which is what the maintenance in
+     *   step four preserves.
+     * - Side effects: Rewrites the parent reference of one representative, updates
+     *   the size and possibly the rank of the other, decrements the group count,
+     *   and, through the two lookups, flattens the paths of both arguments. The
+     *   representative of the absorbed group stops representing anything, so any
+     *   representative a caller has held on to since an earlier call may have
+     *   become stale.
+     *
+     * The choice of which tree is hung beneath the other is the second of the two
+     * heuristics this structure depends on. Attaching the shallower tree to the
+     * deeper one leaves the height of the result unchanged, whereas the opposite
+     * choice would raise it, and only the case of two equally deep trees can
+     * force the height up at all. That is what bounds the height logarithmically
+     * even before any flattening, because a tree of a given rank cannot be built
+     * from fewer than an exponential number of elements. Ranks rather than member
+     * counts are compared here because it is the height that a lookup pays for,
+     * and the two orderings can genuinely disagree once flattening has made a
+     * populous group shallow.
+     *
+     * Time complexity: O(alpha(n)) amortised, dominated entirely by the two
+     * lookups; the merge itself is a fixed number of array writes.
+     * Space complexity: O(1); nothing is allocated, and in particular the members
+     * of the absorbed group are never enumerated, which is the whole point of the
+     * representation.
+     *
+     * @param pFirst
+     * An element of the first group to merge. Must be non-negative and less than
+     * the number of covered elements.
+     *
+     * @param pSecond
+     * An element of the second group to merge. Must satisfy the same constraints
+     * as pFirst. May address the same group as pFirst, in which case the call is
+     * without effect.
+     *
+     * @return
+     * True when two genuinely different groups were merged and the number of
+     * groups consequently dropped by one; false when both elements already shared
+     * a group, and equally false when either identifier lies outside the universe,
+     * since neither case changes the partition. A caller needing to tell those two
+     * reasons apart validates the identifiers beforehand, for instance against
+     * size.
+     */
+    public boolean union(int pFirst, int pSecond) {
+        // Resolve both groups first. This also validates both identifiers, since a
+        // lookup answers an invalid one with the marker.
+        int firstRepresentative = find(pFirst);
+        int secondRepresentative = find(pSecond);
+
+        // An element outside the universe belongs to no group, and there is
+        // consequently no group to merge.
+        if (firstRepresentative == NO_REPRESENTATIVE || secondRepresentative == NO_REPRESENTATIVE) {
+            return false;
+        }
+
+        /*
+         * Both elements already share a group. Reporting this without touching
+         * anything is what lets callers use the return value as a cycle test, and
+         * it is also a correctness requirement: attaching a representative to
+         * itself would create the self-reference of a group while leaving the
+         * counts describing two.
+         */
+        if (firstRepresentative == secondRepresentative) {
+            return false;
+        }
+
+        /*
+         * Decide which tree survives as the root of the merged group. The deeper
+         * tree is kept on top so that the elements of the shallower one gain a
+         * single step of depth at most, and the height of the result stays that of
+         * the deeper tree.
+         */
+        int survivingRoot = firstRepresentative;
+        int absorbedRoot = secondRepresentative;
+        if (ranks[firstRepresentative] < ranks[secondRepresentative]) {
+            survivingRoot = secondRepresentative;
+            absorbedRoot = firstRepresentative;
+        }
+
+        // The single write that performs the merge. Every member of the absorbed
+        // group now reaches the surviving representative, without any of them
+        // being visited.
+        parents[absorbedRoot] = survivingRoot;
+
+        // The merged group holds the members of both. The count left behind at the
+        // absorbed representative is now stale and is deliberately not cleared,
+        // since it is never read again and clearing it would suggest that it
+        // carried meaning.
+        setSizes[survivingRoot] = setSizes[survivingRoot] + setSizes[absorbedRoot];
+
+        /*
+         * Only two equally deep trees can produce a deeper one: the absorbed root
+         * moves one level down and, having been as deep as the surviving tree,
+         * now reaches one level further than it did. In every other case the
+         * shallower tree still ends within the depth the surviving tree already
+         * had, and its rank needs no correction.
+         */
+        if (ranks[survivingRoot] == ranks[absorbedRoot]) {
+            ranks[survivingRoot] = ranks[survivingRoot] + 1;
+        }
+
+        // Two groups became one, which is the only way this count ever changes.
+        disjointSetCount = disjointSetCount - 1;
+
+        return true;
+    }
+
+    /**
+     * Reports whether the two given elements currently belong to the same group.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the membership question the structure exists for, without
+     *   exposing the representative that the answer is derived from.
+     * - Business context: Callers are almost always interested in whether two
+     *   things are connected rather than in which label they share, and comparing
+     *   representatives themselves is easy to get wrong once a merge has made an
+     *   earlier one stale. Offering the comparison here keeps that trap out of
+     *   calling code. Typical use is asking whether two vertices lie in the same
+     *   connected component after a set of edges has been merged in.
+     * - Processing steps: Looks both representatives up and compares them, having
+     *   first ruled out the case in which neither element exists.
+     * - Assumptions: Assumes nothing beyond the invariants of the structure.
+     * - Side effects: None on the partition, but both lookups flatten the paths
+     *   they walk, so this operation writes to the parent references despite
+     *   reading only.
+     *
+     * Time complexity: O(alpha(n)) amortised; two lookups and one comparison.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pFirst
+     * The first element to compare. Must be non-negative and less than the number
+     * of covered elements.
+     *
+     * @param pSecond
+     * The second element to compare. Must satisfy the same constraints as pFirst.
+     * May be the same element as pFirst, which trivially shares its own group.
+     *
+     * @return
+     * True when both elements belong to the same group; false when they belong to
+     * different groups, and equally false when either identifier lies outside the
+     * universe, because an element that does not exist shares a group with
+     * nothing, not even with another identifier that does not exist.
+     */
+    public boolean connected(int pFirst, int pSecond) {
+        int firstRepresentative = find(pFirst);
+        int secondRepresentative = find(pSecond);
+
+        /*
+         * Rule out the non-existent elements before comparing. Without this test
+         * two identifiers outside the universe would both answer with the marker
+         * and would consequently be reported as sharing a group that neither of
+         * them is a member of.
+         */
+        if (firstRepresentative == NO_REPRESENTATIVE || secondRepresentative == NO_REPRESENTATIVE) {
+            return false;
+        }
+
+        // Two elements share a group exactly when the same element represents
+        // both of them, which is the defining property of the representative.
+        return firstRepresentative == secondRepresentative;
+    }
+
 }
