@@ -52,7 +52,7 @@ The goal of this project is to:
 
 - [x] Adjacency Matrix Representation  
 - [x] Adjacency List Representation  
-- [ ] Directed Graph Implementation  
+- [x] Directed Graph Implementation  
 - [x] Undirected Graph Implementation  
 - [x] Weighted Graph Implementation  
 - [ ] Graph Traversals (BFS, DFS)  

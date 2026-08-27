@@ -83,6 +83,45 @@ import linear.list.SinglyLinkedList;
  * which is precisely how a traversal is meant to be reused: it asks for the
  * neighbours of a vertex and receives, from this class, the vertices that can be
  * reached from it, and from the other two, the vertices it is connected to.
+ *
+ * Complexity summary, with v as the number of vertices and a as the number of
+ * arcs:
+ * - construction: O(1)
+ * - getVertices: O(v); getEdges: O(a)
+ * - getVertex: O(v), a scan for the identifier
+ * - addVertex: O(v), dominated by the collision check
+ * - removeVertex: O(v + a), one scan of each list
+ * - getEdge: O(a); addEdge: O(v + a); removeEdge: O(a)
+ * - getEdges for one vertex, getOutgoingEdges, getIncomingEdges, getSuccessors,
+ *   getPredecessors, getNeighbours, getOutDegree, getInDegree: O(a) each
+ * - setAllVertexMarks, allVerticesMarked: O(v)
+ * - setAllEdgeMarks, allEdgesMarked: O(a)
+ * - isEmpty: O(1)
+ * - transposed: O(v * v + a * (v + a)), the cost of rebuilding through the
+ *   validating insertions rather than of the reversal itself
+ * - overall space: O(v + a); one list entry per vertex and one per arc
+ *
+ * Every adjacency query costs a full scan of the arc list, which is the price of
+ * keeping the arcs in one flat collection instead of an outgoing list per vertex.
+ * That price is worth naming, because the alternatives trade it away rather than
+ * remove it: an outgoing list per vertex would answer the successor and
+ * out-degree queries in time proportional to the out-degree alone, but would
+ * answer the predecessor and in-degree queries only by scanning every list or by
+ * maintaining a second, incoming index that every insertion and removal would
+ * then have to keep in step. The flat list answers both directions equally and
+ * equally slowly, which suits a reference implementation whose purpose is to make
+ * the direction visible rather than to be fast, and it keeps this class directly
+ * comparable to the adjacency list of this package, which stores its edges the
+ * same way.
+ *
+ * The space bound differs from the undirected representations in what it counts
+ * rather than in its shape. A mutual relation is one edge there and two arcs
+ * here, so a graph in which every connection runs both ways costs twice the arc
+ * storage; a graph in which no connection does costs the same as before and
+ * carries information the other representations could not have held at all. The
+ * adjacency matrix, by contrast, needs O(v * v) whether the connections are
+ * mutual or not, which makes it the better choice only for dense graphs that are
+ * queried far more often than they are modified.
  */
 public class DirectedGraph implements Graph {
 
