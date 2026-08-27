@@ -766,4 +766,108 @@ public class FloydWarshall {
         return getDistance(pFromVertex, pToVertex) == UNBOUNDED;
     }
 
+    /**
+     * Reconstructs the cheapest route from one vertex to another.
+     *
+     * Detailed explanation of:
+     * - Purpose: Turns the first-step table into one explicit route, listed in the
+     *   order it is travelled.
+     * - Business context: The distance answers what a route costs and this answers
+     *   which route it is, which is what a caller needs in order to follow it,
+     *   display it, or attribute the cost of each step to the arc carrying it.
+     *   Routes are reconstructed on demand rather than stored, because storing the
+     *   sequence for every pair would raise the memory of this result from
+     *   quadratic to cubic, which is precisely the cost the first-step table
+     *   exists to avoid.
+     * - Processing steps:
+     *   1. Report an empty route when none exists, which covers an unconnected
+     *      pair, a vertex the graph did not contain, and a pair spoiled by a
+     *      negative cycle.
+     *   2. Start at the origin and repeatedly move to the vertex the table names
+     *      as the next step, until the destination is reached.
+     * - Assumptions: Assumes the first-step table describes a route that actually
+     *   arrives, which holds for every pair with a finite distance: each step
+     *   strictly reduces the remaining distance to the destination in the sense
+     *   that it follows a cheapest route, and every chain that ran through a
+     *   negative cycle was cleared during the detection, so the walk below cannot
+     *   circle.
+     * - Side effects: None on this result or on the graph; a new list is allocated
+     *   per call.
+     *
+     * Unlike the single-source algorithms of this package, which walk a
+     * predecessor chain backwards from the destination, this one walks forwards
+     * from the origin, because a table indexed by both ends can as easily record
+     * where to go first as where one came from. Appending as it goes is therefore
+     * enough, and no reversal is needed.
+     *
+     * Time complexity: O(k * v) with k as the number of vertices on the route: the
+     * two initial lookups cost O(v) and each further step is a constant table
+     * access, the appending list making the accumulation constant per step.
+     * Space complexity: O(k) for the returned list.
+     *
+     * @param pFromVertex
+     * The vertex the route starts at. May be null or foreign to the graph the
+     * table was computed over, both of which yield an empty route.
+     *
+     * @param pToVertex
+     * The vertex the route ends at. May be null or foreign, with the same result.
+     *
+     * @return
+     * A new list holding the vertices of a cheapest route in travelling order,
+     * beginning with the first vertex and ending with the second, positioned at
+     * its first element. A route from a vertex to itself holds that one vertex.
+     * Empty when no cheapest route exists, whether because the two are not
+     * connected or because a negative cycle lies between them. Never null.
+     */
+    public SinglyLinkedList<Vertex> getPath(Vertex pFromVertex, Vertex pToVertex) {
+        SinglyLinkedList<Vertex> route = new SinglyLinkedList<>();
+
+        int originIndex = indexOf(pFromVertex);
+        int destinationIndex = indexOf(pToVertex);
+
+        // A pair this table does not describe has no route to report.
+        if (originIndex == NO_VERTEX || destinationIndex == NO_VERTEX) {
+            return route;
+        }
+
+        /*
+         * Only a pair with a finite distance has a route worth handing back. The
+         * single comparison excludes the unconnected pairs and the unbounded ones
+         * at once, since the first hold positive infinity and the second negative.
+         */
+        double distance = distances[originIndex][destinationIndex];
+        if (distance == UNREACHABLE || distance == UNBOUNDED) {
+            return route;
+        }
+
+        // The route certainly starts where it was asked to start.
+        int step = originIndex;
+        route.append(vertices[step]);
+
+        /*
+         * Follow the recorded first steps. Each iteration asks the table again
+         * from the vertex just reached, which is what turns one step per pair into
+         * a whole route; the loop ends when the destination has been appended,
+         * which for a route from a vertex to itself is immediately.
+         */
+        while (step != destinationIndex) {
+            step = firstSteps[step][destinationIndex];
+
+            /*
+             * A missing step would mean the table promises a finite distance
+             * without a route to go with it, which the computation cannot produce.
+             * The guard is kept so that such an inconsistency would truncate the
+             * reported route rather than fail on an invalid index.
+             */
+            if (step == NO_VERTEX) {
+                break;
+            }
+
+            route.append(vertices[step]);
+        }
+
+        route.toFirst();
+        return route;
+    }
+
 }
