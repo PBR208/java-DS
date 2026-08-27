@@ -957,4 +957,92 @@ public class BellmanFord {
         return predecessors[index];
     }
 
+    /**
+     * Reconstructs the cheapest route from the source to the specified vertex.
+     *
+     * Detailed explanation of:
+     * - Purpose: Turns the predecessor tree into one explicit route, listed in the
+     *   order it is travelled.
+     * - Business context: The distance answers what a route costs and this answers
+     *   which route it is, which is what a caller needs in order to follow it,
+     *   display it, or attribute the cost of each step to the arc carrying it.
+     *   Routes are reconstructed on demand rather than stored, because storing one
+     *   per vertex would cost quadratic space to hold what the predecessors
+     *   already imply.
+     * - Processing steps:
+     *   1. Report an empty route when none exists, which covers an unreachable
+     *      vertex, one the searched graph did not contain, and one whose distance
+     *      is unbounded.
+     *   2. Follow the predecessors from the target backwards, putting each vertex
+     *      at the front of the result, until the source is passed.
+     * - Assumptions: Assumes the predecessor chain of a vertex with a finite
+     *   distance ends at the source, which the computation guarantees: a
+     *   predecessor is only recorded when it improves a distance, and every chain
+     *   that ran through a negative cycle was cleared during the detection, so the
+     *   walk below cannot circle.
+     * - Side effects: None on this result or on the graph; a new list is allocated
+     *   per call.
+     *
+     * A vertex whose distance is unbounded is answered with an empty route rather
+     * than with the sequence its cleared predecessors would imply, because there is
+     * no cheapest route to hand back: for any route offered, going around the
+     * negative cycle once more would produce a cheaper one. An empty result
+     * therefore means no cheapest route exists, whether because none exists at all
+     * or because no cheapest one does, and a caller separating the two cases asks
+     * whether the vertex is reachable or unbounded.
+     *
+     * The route is assembled by inserting at the front rather than by appending
+     * and reversing afterwards, since the chain is naturally walked from the
+     * target backwards while the caller wants it from the source forwards. The
+     * list of this library inserts before its current element, so positioning the
+     * cursor at the first element before each insertion prepends.
+     *
+     * Time complexity: O(k * v) with k as the number of vertices on the route,
+     * since each step looks its vertex up in the snapshot to find the next
+     * predecessor.
+     * Space complexity: O(k) for the returned list.
+     *
+     * @param pVertex
+     * The vertex to reconstruct the route to. May be null or foreign to the
+     * searched graph, both of which yield an empty route.
+     *
+     * @return
+     * A new list holding the vertices of a cheapest route in travelling order,
+     * beginning with the source and ending with the requested vertex, positioned
+     * at its first element. A route to the source itself holds that one vertex.
+     * Empty when no cheapest route exists. Never null.
+     */
+    public SinglyLinkedList<Vertex> getPath(Vertex pVertex) {
+        SinglyLinkedList<Vertex> route = new SinglyLinkedList<>();
+
+        /*
+         * Only a vertex with a finite distance has a route worth handing back. The
+         * single comparison excludes the unreachable vertices, the unknown ones and
+         * the unbounded ones at once, since the first two hold positive infinity
+         * and the last holds negative infinity.
+         */
+        double distance = getDistance(pVertex);
+        if (distance == UNREACHABLE || distance == UNBOUNDED) {
+            return route;
+        }
+
+        /*
+         * Walk the predecessors backwards, prepending each vertex. The chain ends
+         * at the source, whose predecessor is none, so the loop stops there with
+         * the source already in the list.
+         */
+        Vertex step = pVertex;
+        while (step != null) {
+            // Position at the first element so that the insertion goes in front of
+            // it; on an empty list the same call makes this vertex the only one.
+            route.toFirst();
+            route.insert(step);
+
+            step = getPredecessor(step);
+        }
+
+        route.toFirst();
+        return route;
+    }
+
 }
