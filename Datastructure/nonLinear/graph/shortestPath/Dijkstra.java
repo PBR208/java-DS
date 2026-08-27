@@ -730,4 +730,84 @@ public class Dijkstra {
         return predecessors[index];
     }
 
+    /**
+     * Reconstructs the cheapest route from the source to the specified vertex.
+     *
+     * Detailed explanation of:
+     * - Purpose: Turns the predecessor tree into one explicit route, listed in the
+     *   order it is travelled.
+     * - Business context: The distance answers what a route costs, and this
+     *   answers which route it is, which is what a caller needs in order to follow
+     *   it, display it or charge the individual steps to the edges carrying them.
+     *   Routes are reconstructed on demand rather than stored, because storing one
+     *   per vertex would cost quadratic space to hold what the predecessors
+     *   already imply, and because most callers want the route to a few vertices
+     *   and the distance to many.
+     * - Processing steps:
+     *   1. Report an empty route when no route exists, which covers an unreachable
+     *      vertex and one the searched graph did not contain.
+     *   2. Follow the predecessors from the target backwards, putting each vertex
+     *      at the front of the result, until the source is passed.
+     * - Assumptions: Assumes the predecessor chain of a reachable vertex ends at
+     *   the source, which the search guarantees; the loop is therefore known to
+     *   terminate without a separate guard against cycles.
+     * - Side effects: None on this result or on the graph; a new list is allocated
+     *   per call, so a caller reading the same route repeatedly is better served
+     *   by keeping the list than by asking again.
+     *
+     * The route is assembled by inserting at the front rather than by appending
+     * and reversing afterwards, since the chain is naturally walked from the
+     * target backwards while the caller wants it from the source forwards. The
+     * list of this library inserts before its current element, so positioning the
+     * cursor at the first element before each insertion prepends, which turns the
+     * backwards walk into a forwards route without a second pass.
+     *
+     * Time complexity: O(k * v) with k as the number of vertices on the route,
+     * since each step looks its vertex up in the snapshot to find the next
+     * predecessor. The route itself is walked once.
+     * Space complexity: O(k) for the returned list.
+     *
+     * @param pVertex
+     * The vertex to reconstruct the route to. May be null or foreign to the
+     * searched graph, both of which yield an empty route.
+     *
+     * @return
+     * A new list holding the vertices of a cheapest route in travelling order,
+     * beginning with the source and ending with the requested vertex, positioned
+     * at its first element. A route to the source itself holds that one vertex.
+     * Empty exactly when no route exists, so an empty result and a route of length
+     * zero are distinguishable: the latter still contains the source. Never null.
+     */
+    public SinglyLinkedList<Vertex> getPath(Vertex pVertex) {
+        SinglyLinkedList<Vertex> route = new SinglyLinkedList<>();
+
+        /*
+         * An unreachable vertex has no route, and neither has a vertex the search
+         * never saw. Both are reported as an empty list rather than as a route
+         * that merely starts nowhere, so that a caller iterating the result is
+         * never handed a fragment.
+         */
+        if (!isReachable(pVertex)) {
+            return route;
+        }
+
+        /*
+         * Walk the predecessors backwards, prepending each vertex. The chain ends
+         * at the source, whose predecessor is none, so the loop stops there with
+         * the source already in the list.
+         */
+        Vertex step = pVertex;
+        while (step != null) {
+            // Position at the first element so that the insertion goes in front of
+            // it; on an empty list the same call makes this vertex the only one.
+            route.toFirst();
+            route.insert(step);
+
+            step = getPredecessor(step);
+        }
+
+        route.toFirst();
+        return route;
+    }
+
 }
