@@ -1,0 +1,400 @@
+package nonLinear.graph.shortestPath;
+
+import nonLinear.graph.base.Edge;
+import nonLinear.graph.base.Graph;
+import nonLinear.graph.base.Vertex;
+
+import linear.list.SinglyLinkedList;
+
+/**
+ * Purpose:
+ * Computes the shortest routes from one vertex of a weighted graph to every
+ * other vertex it can reach, measuring a route by the sum of the weights along
+ * it rather than by the number of edges. The problem is not solved by the
+ * breadth-first walk of the neighbouring traversal package, which finds the route
+ * of fewest edges and is therefore only correct when every edge costs the same;
+ * as soon as edges carry different weights, a detour over three cheap edges may
+ * well cost less than a single expensive one, and a walk that settles a vertex on
+ * first sight has already committed to the wrong answer. This class settles
+ * vertices in order of increasing distance instead, taking up the nearest vertex
+ * whose distance is not yet final, fixing that distance, and offering the routes
+ * through it to its neighbours. That order is what makes the greedy step sound,
+ * and it is also what the algorithm pays for with its one substantial
+ * restriction: it holds only while no edge carries a negative weight, because a
+ * negative edge could otherwise cheapen a route that had already been declared
+ * final. The result is kept as a distance and a predecessor per vertex, which
+ * together form the tree of shortest routes and allow any single route to be read
+ * back edge by edge.
+ *
+ * Owner:
+ * PBR208 - https://github.com/PBR208/
+ *
+ * Version:
+ * 1.0
+ */
+
+/**
+ * Single-source shortest paths over a non-negatively weighted graph, computed
+ * once at construction and queried afterwards.
+ *
+ * Responsibility: Encapsulates the distance from the source to every vertex, the
+ * predecessor each vertex is best reached through, the search that establishes
+ * both, and the reconstruction of a route from that predecessor chain. It
+ * maintains the invariant that a reported distance is the total weight of some
+ * genuine route from the source, and that no cheaper route exists in the graph
+ * the search was run over.
+ *
+ * Scope: Used wherever a cheapest route is wanted rather than a shortest one in
+ * edges, and wherever the weights are costs that cannot be negative, which covers
+ * distances, durations, capacities consumed and prices. A graph containing a
+ * negative weight is refused rather than answered wrongly, and belongs to the
+ * Bellman-Ford algorithm of this package instead.
+ *
+ * Dependencies: Depends on the Graph contract, on Vertex and Edge, and on
+ * SinglyLinkedList for the route it hands back. It is written against the
+ * contract rather than a representation, so it runs over the adjacency list, the
+ * adjacency matrix and the directed graph alike; over a directed graph it follows
+ * the arcs in their own direction, because it asks for the neighbours of a vertex
+ * and for the edge leading to each of them, and the directed graph answers both
+ * of those questions directionally.
+ *
+ * Thread-safety: An instance is safe to share between threads once constructed,
+ * because everything it holds is written during construction and only read
+ * afterwards. The construction itself is not thread-safe, since it reads a graph
+ * that another thread may be changing at the same time.
+ *
+ * Lifecycle: The whole computation happens in the constructor, so an instance is
+ * a finished result rather than a calculator waiting to be started, and there is
+ * no order in which its methods must be called. The graph is deliberately not
+ * retained: the distances describe the graph as it stood when the instance was
+ * built, and a later change to that graph cannot silently alter answers already
+ * given. A caller needing the routes from a second source, or from the same
+ * source after a change, constructs a second instance.
+ *
+ * Architectural role: Serves as the first weighted algorithm of this repository
+ * and as the counterpart to the unweighted breadth-first walk of the traversal
+ * package: both settle vertices in order of increasing distance from a source,
+ * and they differ only in how distance is measured, which is why the queue that
+ * suffices there becomes a repeated search for the nearest unsettled vertex here.
+ */
+public class Dijkstra {
+
+    /**
+     * Distance reported for a vertex no route from the source reaches.
+     *
+     * Positive infinity is used rather than an agreed sentinel number because it
+     * is the only value that behaves correctly in the comparison the search is
+     * built on: every real distance is smaller than it, and extending an
+     * unreachable vertex by any edge weight yields infinity again rather than
+     * wrapping into a small number that would look like a cheap route. It is
+     * exposed because callers comparing a returned distance against it is the
+     * intended way to recognise an unreachable vertex, alongside the reachability
+     * query offered for that purpose.
+     */
+    public static final double UNREACHABLE = Double.POSITIVE_INFINITY;
+
+    /**
+     * Index reported when no vertex satisfies a search.
+     *
+     * Vertices are addressed by their position in the snapshot below, so no valid
+     * index is negative and this value cannot be confused with one. It marks both
+     * a vertex that is foreign to the graph and the absence of any unsettled
+     * vertex still worth taking up.
+     */
+    private static final int NO_VERTEX = -1;
+
+    /**
+     * The vertices of the graph, in the order it reported them at construction.
+     *
+     * This array defines the index space every other array of this class is
+     * addressed by, which is what allows distances and predecessors to be held in
+     * plain arrays rather than in a map from vertices to values, the library
+     * being deliberately free of the collection framework. The snapshot is taken
+     * once and kept, so the result stays readable even if the graph loses vertices
+     * afterwards; the vertices themselves are shared instances rather than copies.
+     */
+    private final Vertex[] vertices;
+
+    /**
+     * Total weight of the cheapest known route from the source to each vertex.
+     *
+     * Indexed like the vertex snapshot. During the search an entry is an upper
+     * bound that may still fall; once its vertex has been settled the entry is
+     * final, and when the search ends every entry is either the true distance or
+     * UNREACHABLE. The type is double because edge weights are, which also means
+     * the usual caution about accumulated rounding applies: a distance is the sum
+     * of the weights along a route and is exact only as far as those additions
+     * are.
+     */
+    private final double[] distances;
+
+    /**
+     * The vertex each vertex is best reached through, indexed like the snapshot.
+     *
+     * Together these entries form the tree of shortest routes: following them
+     * from any reachable vertex leads back to the source along a cheapest route,
+     * which is what makes a full route recoverable without storing one per vertex.
+     * The entry stays null for the source, which is reached through nothing, and
+     * for every unreachable vertex, which is reached at all.
+     */
+    private final Vertex[] predecessors;
+
+    /**
+     * The vertex all reported distances and routes start from.
+     *
+     * Held so that a result can be interpreted without the caller having to
+     * remember which source produced it, and so that a route can be recognised as
+     * complete when it arrives back here.
+     */
+    private final Vertex sourceVertex;
+
+    /**
+     * Computes the shortest routes from the specified source vertex through the
+     * specified graph.
+     *
+     * Detailed explanation of:
+     * - Purpose: Establishes the complete result this instance exists to be
+     *   queried for, namely a distance and a predecessor for every vertex of the
+     *   graph.
+     * - Business context: The computation is performed here rather than in a
+     *   method that must be called first, because a partially computed result has
+     *   no useful meaning and a caller could otherwise read distances that are
+     *   still provisional. An instance is therefore a finished answer to one
+     *   question, and asking about a second source, or about the same source after
+     *   the graph has changed, means constructing a second instance. That is not a
+     *   limitation of the algorithm but a property of what it computes: the
+     *   distances are only jointly meaningful for a single source.
+     * - Processing steps:
+     *   1. Reject a null graph, a source that is not a vertex of that graph, and a
+     *      graph containing a negative edge weight.
+     *   2. Take a snapshot of the vertices, which fixes the index space the result
+     *      is held in.
+     *   3. Set every distance to unreachable and every predecessor to none, then
+     *      set the distance of the source to zero, which is the only thing known
+     *      before the search begins.
+     * - Assumptions: Assumes the graph does not change while the constructor runs,
+     *   and that its neighbour and edge queries agree with one another, which the
+     *   contract requires and all three representations of this package honour.
+     * - Side effects: Allocates the three result arrays. The graph is read but
+     *   neither modified nor retained; in particular, and unlike the traversals of
+     *   this package, the marks of its vertices are left untouched, because the
+     *   search keeps its own record of what has been settled and has no reason to
+     *   disturb state a caller may be relying on.
+     *
+     * Time complexity: O(v + e) for the validation and the snapshot alone, with v
+     * vertices and e edges; the search that follows dominates and is documented on
+     * the class.
+     * Space complexity: O(v) for the three arrays, one entry per vertex each.
+     *
+     * @param pGraph
+     * The graph to search. Must not be null and must not contain an edge of
+     * negative weight. May contain vertices the source cannot reach, which are
+     * reported as unreachable rather than treated as an error.
+     *
+     * @param pSourceVertex
+     * The vertex every reported distance is measured from. Must be the very
+     * instance the graph holds, not a detached vertex carrying the same
+     * identifier, since a foreign vertex has no neighbours in this graph and would
+     * yield a result in which nothing is reachable.
+     *
+     * @throws IllegalArgumentException
+     * Thrown when pGraph is null, when pSourceVertex is null or is not a vertex of
+     * pGraph, or when any edge of pGraph carries a negative weight. The last case
+     * is refused rather than computed because the algorithm would return a wrong
+     * answer rather than fail: it declares a distance final as soon as its vertex
+     * is the nearest unsettled one, and a negative edge encountered later could
+     * still undercut it. Callers whose weights can be negative want the
+     * Bellman-Ford algorithm, which relaxes every edge repeatedly and therefore
+     * survives them.
+     */
+    public Dijkstra(Graph pGraph, Vertex pSourceVertex) {
+        // Without a graph there is nothing to search, and every step below would
+        // fail on a reference the caller could have checked more cheaply.
+        if (pGraph == null) {
+            throw new IllegalArgumentException("The graph must not be null.");
+        }
+
+        /*
+         * The source must be the instance the graph holds. Comparing by identity
+         * rather than by identifier rules out a detached vertex that merely
+         * carries a matching identifier, which would have no neighbours here and
+         * would produce a result declaring the whole graph unreachable.
+         */
+        if (pSourceVertex == null || pSourceVertex.getID() == null
+                || pGraph.getVertex(pSourceVertex.getID()) != pSourceVertex) {
+            throw new IllegalArgumentException("The source vertex must be a vertex of the graph.");
+        }
+
+        // Refuse the one input the algorithm cannot answer correctly; see this
+        // constructor's documentation for why silence would be worse than an
+        // exception here.
+        requireNonNegativeWeights(pGraph);
+
+        this.sourceVertex = pSourceVertex;
+        this.vertices = snapshotVertices(pGraph);
+        this.distances = new double[vertices.length];
+        this.predecessors = new Vertex[vertices.length];
+
+        /*
+         * Before anything has been explored, every vertex is as far away as it can
+         * be and is reached through nothing. Starting from infinity rather than
+         * from a large finite number is what lets the first route found to a
+         * vertex always improve on its current estimate.
+         */
+        for (int index = 0; index < vertices.length; index++) {
+            distances[index] = UNREACHABLE;
+            predecessors[index] = null;
+        }
+
+        // The source is reached from itself at no cost, and this single known
+        // value is what the whole search grows out of.
+        distances[indexOf(pSourceVertex)] = 0.0;
+    }
+
+    /**
+     * Rejects a graph containing an edge of negative weight.
+     *
+     * Detailed explanation of:
+     * - Purpose: Enforces the one precondition the correctness of the search
+     *   depends on.
+     * - Business context: The check is worth its cost because the failure it
+     *   prevents is silent. With a negative edge the algorithm still terminates
+     *   and still returns distances; they are simply wrong for the vertices whose
+     *   cheapest route runs through that edge, and nothing in the result marks
+     *   them as such. Detecting the condition once, up front, converts an answer
+     *   the caller would have trusted into an exception naming the cause.
+     * - Processing steps: Walks every edge of the graph and throws as soon as one
+     *   carries a weight below zero.
+     * - Assumptions: Assumes the graph reports all of its edges, which the
+     *   contract requires. A weight of exactly zero is permitted: it makes routes
+     *   ambiguous but never makes a settled distance improvable, which is all the
+     *   algorithm needs.
+     * - Side effects: None on the graph, though the traversal of its edge
+     *   collection moves the internal cursor of the representation.
+     *
+     * Time complexity: O(e) in the number of edges, stopping at the first negative
+     * one.
+     * Space complexity: O(e) for the edge list the graph hands out, which is
+     * discarded immediately afterwards.
+     *
+     * @param pGraph
+     * The graph to inspect. Must not be null, which the caller has already
+     * ensured.
+     *
+     * @throws IllegalArgumentException
+     * Thrown as soon as an edge of negative weight is found, naming the algorithm
+     * that does handle such weights so that the message points somewhere useful.
+     */
+    private static void requireNonNegativeWeights(Graph pGraph) {
+        SinglyLinkedList<Edge> edges = pGraph.getEdges();
+
+        edges.toFirst();
+        while (edges.hasAccess()) {
+            if (edges.getContent().getWeight() < 0.0) {
+                throw new IllegalArgumentException(
+                        "The graph must not contain edges of negative weight; use the Bellman-Ford algorithm instead.");
+            }
+            edges.next();
+        }
+    }
+
+    /**
+     * Copies the vertices of the specified graph into an array.
+     *
+     * Detailed explanation of:
+     * - Purpose: Fixes the index space that the distances and the predecessors are
+     *   held in.
+     * - Business context: The result needs a value per vertex, and this library
+     *   holds no map from objects to values, so the vertices are numbered by their
+     *   position in this array and every other array is addressed the same way.
+     *   Taking the snapshot once also decouples the result from the graph, which
+     *   is what allows the graph reference to be dropped after construction.
+     * - Processing steps: Walks the vertex list once to count the vertices, then
+     *   walks it again to fill an array of exactly that length.
+     * - Assumptions: Assumes the graph reports the same vertices in both walks,
+     *   which holds because nothing modifies the graph in between.
+     * - Side effects: None on the graph; the lists it hands out are copies.
+     *
+     * Two passes are used because the list of this library reports no size and the
+     * array must be allocated at its final length. Counting first is cheaper than
+     * growing an array repeatedly and is clearer than guessing a capacity.
+     *
+     * Time complexity: O(v) in the number of vertices; two walks of a list the
+     * graph has already built.
+     * Space complexity: O(v) for the returned array, which holds references to the
+     * graph's own vertex instances rather than copies of them.
+     *
+     * @param pGraph
+     * The graph whose vertices are to be captured. Must not be null, which the
+     * caller has already ensured.
+     *
+     * @return
+     * A new array holding every vertex of the graph. Empty when the graph holds no
+     * vertices, which cannot occur here because a valid source is one of them.
+     * Never null.
+     */
+    private static Vertex[] snapshotVertices(Graph pGraph) {
+        SinglyLinkedList<Vertex> vertexList = pGraph.getVertices();
+
+        // First pass: establish the length, which the list itself does not report.
+        int count = 0;
+        vertexList.toFirst();
+        while (vertexList.hasAccess()) {
+            count = count + 1;
+            vertexList.next();
+        }
+
+        // Second pass: fill the array in the same order, which is the order every
+        // index of this class refers to.
+        Vertex[] result = new Vertex[count];
+        int position = 0;
+        vertexList.toFirst();
+        while (vertexList.hasAccess()) {
+            result[position] = vertexList.getContent();
+            position = position + 1;
+            vertexList.next();
+        }
+
+        return result;
+    }
+
+    /**
+     * Reports the position of the specified vertex within the snapshot.
+     *
+     * Detailed explanation of:
+     * - Purpose: Translates a vertex into the index its distance and predecessor
+     *   are stored under.
+     * - Business context: Every query of this class begins here, and so does every
+     *   relaxation during the search. The lookup is a linear scan because the
+     *   snapshot is a plain array and this library provides no hash-based lookup;
+     *   the cost is documented on each operation rather than hidden, since it is
+     *   what raises the search above the bound usually quoted for this algorithm.
+     * - Processing steps: Scans the snapshot and returns the position of the
+     *   matching vertex.
+     * - Assumptions: Assumes vertices are compared by identity, as everywhere in
+     *   this package, so that a detached vertex carrying a familiar identifier is
+     *   correctly reported as unknown.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v) in the number of vertices.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pVertex
+     * The vertex to locate. May be null or foreign to the graph, both of which are
+     * reported as absent.
+     *
+     * @return
+     * The position of the vertex in the snapshot, or NO_VERTEX when the snapshot
+     * does not contain it.
+     */
+    private int indexOf(Vertex pVertex) {
+        for (int index = 0; index < vertices.length; index++) {
+            if (vertices[index] == pVertex) {
+                return index;
+            }
+        }
+
+        return NO_VERTEX;
+    }
+
+}
