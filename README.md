@@ -58,7 +58,7 @@ The goal of this project is to:
 - [x] Graph Traversals (BFS, DFS)  
 - [x] Dijkstra’s Shortest Path Algorithm  
 - [ ] Bellman-Ford Algorithm  
-- [ ] Floyd-Warshall Algorithm  
+- [x] Floyd-Warshall Algorithm  
 - [ ] Topological Sorting  
 - [ ] Minimum Spanning Tree (Kruskal / Prim)
 

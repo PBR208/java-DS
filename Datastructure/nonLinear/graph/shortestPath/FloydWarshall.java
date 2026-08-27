@@ -75,6 +75,36 @@ import linear.list.SinglyLinkedList;
  * how it stores its answer: a table of quadratic size rather than one value per
  * vertex, which is simultaneously the reason it can answer any pair immediately
  * and the reason it cannot be afforded on a large graph.
+ *
+ * Complexity summary, with v as the number of vertices, e as the number of edges,
+ * a as the number of arcs, n as the cost the underlying representation charges
+ * for one neighbour query and m as the cost of one edge lookup:
+ * - construction, which performs the whole computation: O(v * v + v * n +
+ *   a * (v + m)) for filling the tables from the graph, plus O(v * v * v) for the
+ *   improvement step and, at worst, the same again for the cycle detection
+ * - hasNegativeCycle: O(1)
+ * - getDistance, isReachable, isUnbounded: O(v), the two vertex lookups; the
+ *   table access itself is constant
+ * - getPath: O(k * v) for a route of k vertices
+ * - overall space: O(v * v) for the two tables
+ *
+ * The cubic bound is reached whatever the graph looks like. The improvement step
+ * has no way of noticing that it is finished, unlike the repeated relaxation of
+ * the Bellman-Ford algorithm, which stops as soon as a round changes nothing; only
+ * the cycle detection is cheap in the ordinary case, costing a single reading of
+ * the diagonal when no negative cycle exists.
+ *
+ * Whether this is the better way to obtain all pairs depends on the density of
+ * the graph rather than on the algorithms alone. Running a single-source search
+ * once per vertex costs the graph access once per source, and on a sparse graph
+ * that total stays well below the cube of the vertex count; on a dense graph it
+ * approaches it, and this method then wins on constants, since it reads the graph
+ * exactly once and spends the rest of its time on arithmetic over two flat
+ * tables. What settles the choice in practice is more often the memory: a table
+ * of quadratic size is the price of admission here, and it is paid before the
+ * first query, while the single-source algorithms of this package need only a
+ * value per vertex and can be run for the few sources a caller actually asks
+ * about.
  */
 public class FloydWarshall {
 
