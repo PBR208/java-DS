@@ -149,6 +149,18 @@ public class FloydWarshall {
     private final int[][] firstSteps;
 
     /**
+     * Whether the graph contains a cycle of negative total weight.
+     *
+     * Recorded because its absence is the guarantee a caller needs in order to
+     * trust the table, and its presence is a finding in its own right. Unlike the
+     * single-source algorithms of this package, this one sees the whole graph
+     * rather than the part one source can reach, so the answer here is about the
+     * graph itself: a negative cycle in a corner nothing else connects to is
+     * reported, even though it spoils no entry beyond its own neighbourhood.
+     */
+    private final boolean negativeCycleFound;
+
+    /**
      * Computes the cheapest routes between all pairs of vertices of the specified
      * graph.
      *
@@ -215,6 +227,10 @@ public class FloydWarshall {
         // Widen those direct routes into the cheapest routes over any number of
         // intermediate vertices.
         admitIntermediateVertices();
+
+        // Replace the entries that a negative cycle robs of any meaning, and
+        // record whether there was one at all.
+        this.negativeCycleFound = markUnboundedPairs();
     }
 
     /**
@@ -297,6 +313,108 @@ public class FloydWarshall {
                 }
             }
         }
+    }
+
+    /**
+     * Finds the pairs whose distance is driven down without bound by a negative
+     * cycle and records them as such.
+     *
+     * Detailed explanation of:
+     * - Purpose: Separates the pairs with a genuine cheapest route from those that
+     *   have none, and reports whether any negative cycle exists at all.
+     * - Business context: The table this algorithm produces gives the condition
+     *   away almost for free. An entry on the diagonal is the cost of leaving a
+     *   vertex and returning to it, which is zero when nothing better exists and
+     *   negative exactly when the vertex lies on a cycle of negative total weight.
+     *   Every route that can reach such a vertex and continue from it to a
+     *   destination can then be made arbitrarily cheap by looping first, so those
+     *   pairs have no cheapest route and are recorded as unbounded rather than
+     *   given whichever number the improvement step happened to leave behind. The
+     *   distinction matters to a caller: an unbounded pair is connected, which an
+     *   unreachable one is not.
+     * - Processing steps:
+     *   1. Read the diagonal and note every vertex sitting on a negative cycle.
+     *   2. Report that there is none, leaving the table untouched, when the
+     *      diagonal is clean.
+     *   3. For every ordered pair, mark it unbounded as soon as one of those
+     *      vertices can be reached from its origin and reached onwards to its
+     *      destination.
+     * - Assumptions: Assumes the improvement step has already run, so that the
+     *   diagonal describes complete round trips rather than single arcs, and that
+     *   reaching a vertex and continuing from it is enough to loop arbitrarily
+     *   often, which holds because a cycle returns to where it started.
+     * - Side effects: Overwrites the distance and first-step entries of the
+     *   affected pairs. Every other entry keeps the result the improvement step
+     *   established, which is what allows a table to be partly usable.
+     *
+     * Note that the diagonal of an affected vertex is itself marked unbounded by
+     * this sweep, since such a vertex trivially reaches itself in both directions.
+     * That is the intended answer: the cheapest round trip through a negative
+     * cycle has no lower bound either.
+     *
+     * Time complexity: O(v * v * v) in the worst case, one scan over the cycle
+     * vertices per pair, and O(v) when the diagonal is clean, which is the
+     * ordinary case and costs no more than reading it.
+     * Space complexity: O(v) for the record of vertices on negative cycles, which
+     * is discarded when this method returns.
+     *
+     * @return
+     * True when the graph contains at least one cycle of negative total weight;
+     * false when every route has a lower bound, in which case no entry was changed
+     * here.
+     */
+    private boolean markUnboundedPairs() {
+        /*
+         * A vertex lies on a negative cycle exactly when the table says it can
+         * leave and return for less than nothing. Nothing else has to be searched
+         * for: the improvement step has already found every route, including the
+         * round trips.
+         */
+        boolean[] onNegativeCycle = new boolean[vertices.length];
+        boolean anyFound = false;
+
+        for (int index = 0; index < vertices.length; index++) {
+            if (distances[index][index] < 0.0) {
+                onNegativeCycle[index] = true;
+                anyFound = true;
+            }
+        }
+
+        // With a clean diagonal every route has a cheapest form and the table
+        // stands as the improvement step left it.
+        if (!anyFound) {
+            return false;
+        }
+
+        for (int origin = 0; origin < vertices.length; origin++) {
+            for (int destination = 0; destination < vertices.length; destination++) {
+
+                for (int cycleVertex = 0; cycleVertex < vertices.length; cycleVertex++) {
+                    /*
+                     * The pair is spoiled as soon as one cycle vertex lies on some
+                     * route between its two ends: the origin can reach it, it can
+                     * reach the destination, and in between the cycle may be
+                     * repeated as often as one likes.
+                     */
+                    if (onNegativeCycle[cycleVertex]
+                            && distances[origin][cycleVertex] != UNREACHABLE
+                            && distances[cycleVertex][destination] != UNREACHABLE) {
+
+                        distances[origin][destination] = UNBOUNDED;
+
+                        // No cheapest route exists, so there is no first step of
+                        // one to record either.
+                        firstSteps[origin][destination] = NO_VERTEX;
+
+                        // One spoiling vertex is enough; the remaining ones would
+                        // reach the same conclusion.
+                        break;
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     /**
