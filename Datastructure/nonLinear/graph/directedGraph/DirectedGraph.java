@@ -392,4 +392,309 @@ public class DirectedGraph {
         }
     }
 
+    /**
+     * Retrieves a copy of all arcs currently contained in this graph.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides access to the arc set without exposing the internal
+     *   list or its cursor.
+     * - Business context: Algorithms that consider every connection rather than
+     *   following the arcs out of one vertex read the graph through this
+     *   operation, among them the relaxation rounds of a shortest-path search
+     *   over negative weights and any report over the whole graph. Each arc
+     *   appears exactly once, which is the point at which the difference to the
+     *   undirected representations of this package becomes visible in the count:
+     *   a mutual connection is two entries here and one entry there.
+     * - Processing steps: Walks the internal arc list from its first element into
+     *   a freshly allocated list and positions the copy at its first element.
+     * - Assumptions: Assumes no other operation is iterating the internal list at
+     *   the same time.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs; one append per arc.
+     * Space complexity: O(a) for the returned list, which holds references to the
+     * same Edge instances, so a weight or a mark changed through a returned arc
+     * is changed inside the graph.
+     *
+     * @return
+     * A new list holding every arc of this graph, positioned at its first element
+     * so that it can be traversed immediately. Empty when the graph holds no
+     * arcs. Never null.
+     */
+    public SinglyLinkedList<Edge> getEdges() {
+        SinglyLinkedList<Edge> result = new SinglyLinkedList<>();
+
+        arcs.toFirst();
+        while (arcs.hasAccess()) {
+            result.append(arcs.getContent());
+            arcs.next();
+        }
+
+        result.toFirst();
+        return result;
+    }
+
+    /**
+     * Retrieves the arc running from the first specified vertex to the second.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers whether one vertex reaches another in a single step and,
+     *   if so, hands over the arc carrying the weight of that step.
+     * - Business context: This is the two-vertex lookup the graph contract of this
+     *   package defines, specialised to direction, and the specialisation is the
+     *   whole difference between this class and the undirected representations:
+     *   there the order of the two arguments is irrelevant and the same edge
+     *   answers both orderings, while here the arguments name the tail and the
+     *   head, and the reversed question is a genuinely different one that may well
+     *   be answered with null or with an arc of an entirely different weight. A
+     *   caller interested in a connection in either direction asks twice.
+     * - Processing steps: Scans the arc list and returns the first arc whose tail
+     *   is the first argument and whose head is the second.
+     * - Assumptions: Assumes at most one arc runs from a given tail to a given
+     *   head, which insertion enforces, so the first match is the only match.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs. The adjacency matrix of this
+     * package answers the same question in constant time, which is the trade the
+     * list-based storage makes here and the reason a matrix is preferred for
+     * dense graphs that are queried more often than they are changed.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pFromVertex
+     * The vertex the arc must leave, compared by reference. May be null, which
+     * matches no arc.
+     *
+     * @param pToVertex
+     * The vertex the arc must arrive at, compared by reference. May be null, which
+     * matches no arc.
+     *
+     * @return
+     * The arc from pFromVertex to pToVertex, or null when this graph holds no such
+     * arc, which includes the case in which it holds only the opposing arc from
+     * pToVertex to pFromVertex.
+     */
+    public Edge getEdge(Vertex pFromVertex, Vertex pToVertex) {
+        arcs.toFirst();
+        while (arcs.hasAccess()) {
+            Vertex[] endpoints = arcs.getContent().getVertices();
+
+            /*
+             * Only one ordering is accepted, which is the entire difference to
+             * the undirected implementations of this package: they test both
+             * orderings here, because an edge there connects its endpoints
+             * without leaving either of them.
+             */
+            if (endpoints[TAIL_INDEX] == pFromVertex && endpoints[HEAD_INDEX] == pToVertex) {
+                return arcs.getContent();
+            }
+            arcs.next();
+        }
+
+        // No arc of this graph runs in the requested direction.
+        return null;
+    }
+
+    /**
+     * Retrieves all arcs touching the specified vertex, in either direction.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides every connection the vertex participates in, whether it
+     *   is the end an arc leaves or the end an arc arrives at.
+     * - Business context: This is the incidence query the graph contract of this
+     *   package defines, and it is answered here in the only way that keeps its
+     *   meaning intact, namely by ignoring the direction rather than by choosing
+     *   one. It is what a caller wants when it asks how strongly a vertex is
+     *   involved in the graph at all, for instance before removing it or when
+     *   reporting on it. A caller that means the arcs a vertex can be left along,
+     *   which is what a traversal means, must ask for the outgoing arcs
+     *   explicitly, and the separation of the two questions is deliberate: a
+     *   silent choice of one of them here would make this class agree with the
+     *   contract in signature and disagree with it in meaning.
+     * - Processing steps: Scans the arc list once and collects every arc naming
+     *   the vertex at either endpoint.
+     * - Assumptions: Assumes no arc names the same vertex twice, which insertion
+     *   enforces by refusing a loop, so no arc is collected twice by the single
+     *   test below.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs, since the storage keeps no
+     * per-vertex index and every arc must be examined.
+     * Space complexity: O(d) for the returned list, where d is the number of arcs
+     * touching the vertex, that is, the sum of its two degrees.
+     *
+     * @param pVertex
+     * The vertex whose arcs are to be collected, compared by reference. May be
+     * null or foreign to this graph, in which case no arc matches and the result
+     * is empty.
+     *
+     * @return
+     * A new list holding every arc that leaves or arrives at the vertex,
+     * positioned at its first element. Empty when the vertex is isolated. Never
+     * null.
+     */
+    public SinglyLinkedList<Edge> getEdges(Vertex pVertex) {
+        SinglyLinkedList<Edge> result = new SinglyLinkedList<>();
+
+        arcs.toFirst();
+        while (arcs.hasAccess()) {
+            Vertex[] endpoints = arcs.getContent().getVertices();
+
+            // Either role makes the arc incident, and a single test covers both
+            // because an arc can never name the same vertex at both ends.
+            if (endpoints[TAIL_INDEX] == pVertex || endpoints[HEAD_INDEX] == pVertex) {
+                result.append(arcs.getContent());
+            }
+            arcs.next();
+        }
+
+        result.toFirst();
+        return result;
+    }
+
+    /**
+     * Adds the specified arc to this graph, running from its first endpoint to
+     * its second.
+     *
+     * Detailed explanation of:
+     * - Purpose: Records a one-way connection between two registered vertices.
+     * - Business context: This is where the endpoint order of an Edge acquires
+     *   its meaning: the instance handed in is stored as the arc leaving its first
+     *   endpoint and arriving at its second, and a caller wanting the connection
+     *   to exist in both directions constructs and adds a second arc with the
+     *   endpoints exchanged. Accepting that opposing arc is the behaviour that
+     *   distinguishes this class from the undirected representations of this
+     *   package, which would reject it as a duplicate of a connection they already
+     *   hold.
+     * - Processing steps:
+     *   1. Reject a null arc or an arc with a null endpoint.
+     *   2. Reject an arc whose endpoints are the same vertex.
+     *   3. Reject an arc whose endpoints are not both registered with this graph,
+     *      checked by identity rather than by identifier.
+     *   4. Reject a second arc running from the same tail to the same head.
+     *   5. Append the arc.
+     * - Assumptions: Assumes the caller has added both endpoint vertices
+     *   beforehand. The check in step three compares the instance the graph holds
+     *   under the endpoint's identifier against the endpoint itself, so a detached
+     *   vertex that merely carries a matching identifier is refused; without that
+     *   comparison the graph could end up holding arcs between vertices its own
+     *   vertex list does not contain.
+     * - Side effects: Appends to the arc list when the arc is accepted, and moves
+     *   both cursors during validation in every case.
+     *
+     * A loop is refused for the same reason the other representations of this
+     * package refuse one, namely that all three should agree on what a legal
+     * connection is, even though a loop is meaningful in a directed graph in a way
+     * it is not in an undirected one. The consequence is worth stating: a caller
+     * modelling something that genuinely points at itself, such as a build target
+     * depending on its own output, must represent that outside the graph, because
+     * this class will silently drop the arc.
+     *
+     * Time complexity: O(v + a); the endpoint validation scans the vertex list
+     * twice and the duplicate check scans the arc list once, after which the
+     * append itself is O(1).
+     * Space complexity: O(1); the list node is the only allocation.
+     *
+     * @param pEdge
+     * The arc to add, read as running from the first of its endpoints to the
+     * second. Ignored when null, when either endpoint is null, when both endpoints
+     * are the same vertex, when either endpoint is not registered with this graph,
+     * or when an arc already runs from the same tail to the same head. The
+     * opposing arc, from the head back to the tail, is not a duplicate and is
+     * accepted.
+     */
+    public void addEdge(Edge pEdge) {
+        // An arc that does not exist cannot be stored, and reading its endpoints
+        // below would fail.
+        if (pEdge == null) {
+            return;
+        }
+
+        Vertex[] endpoints = pEdge.getVertices();
+        Vertex tail = endpoints[TAIL_INDEX];
+        Vertex head = endpoints[HEAD_INDEX];
+
+        // An arc missing an endpoint describes no connection and could never be
+        // followed in either direction.
+        if (tail == null || head == null) {
+            return;
+        }
+
+        // A loop is refused so that all three representations of this package
+        // agree on what a legal connection is; see the note in this method's
+        // documentation for what that costs.
+        if (tail == head) {
+            return;
+        }
+
+        /*
+         * Both endpoints must be vertices this graph actually holds. The identity
+         * comparison against the lookup result is what rules out a detached vertex
+         * carrying an identifier that happens to be in use here, which would
+         * otherwise produce an arc leading out of the graph.
+         */
+        if (getVertex(tail.getID()) != tail || getVertex(head.getID()) != head) {
+            return;
+        }
+
+        // Refuse a second arc in the same direction between the same pair, which
+        // would make the two-vertex lookup ambiguous. The opposing arc is a
+        // different connection and is deliberately not covered by this test.
+        if (getEdge(tail, head) != null) {
+            return;
+        }
+
+        arcs.append(pEdge);
+    }
+
+    /**
+     * Removes the specified arc from this graph.
+     *
+     * Detailed explanation of:
+     * - Purpose: Withdraws a single one-way connection while leaving both of its
+     *   endpoints and every other arc in place.
+     * - Business context: Supports the incremental maintenance a mutable graph
+     *   exists for, such as retracting a dependency that no longer holds. Only the
+     *   arc handed in is removed: if the graph also holds the opposing arc, that
+     *   one describes a different connection and survives, which is again the
+     *   behaviour an undirected representation cannot offer, since it has only the
+     *   one entry to remove.
+     * - Processing steps: Scans the arc list and removes the entry identified by
+     *   reference.
+     * - Assumptions: Assumes the list advances its own cursor when an element is
+     *   removed, so the loop advances only when nothing was removed. The scan runs
+     *   to the end rather than stopping at the first match, matching the other
+     *   representations of this package.
+     * - Side effects: Removes a list entry when the arc is found and moves the
+     *   cursor in every case.
+     *
+     * Time complexity: O(a) in the number of arcs; the list must be scanned to
+     * find the entry.
+     * Space complexity: O(1); removal is performed in place.
+     *
+     * @param pEdge
+     * The arc to remove, identified by reference rather than by its endpoints, so
+     * that a caller holding an equivalent but different Edge instance cannot
+     * remove an arc it does not own. Ignored when null, and without effect when
+     * the arc does not belong to this graph.
+     */
+    public void removeEdge(Edge pEdge) {
+        // Nothing to look for; every entry of a valid arc list is a real arc.
+        if (pEdge == null) {
+            return;
+        }
+
+        arcs.toFirst();
+        while (arcs.hasAccess()) {
+            if (arcs.getContent() == pEdge) {
+                // The list advances its own cursor as part of the removal.
+                arcs.remove();
+            } else {
+                arcs.next();
+            }
+        }
+    }
+
 }
