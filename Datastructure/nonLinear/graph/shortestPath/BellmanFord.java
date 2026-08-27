@@ -92,6 +92,19 @@ public class BellmanFord {
     public static final double UNREACHABLE = Double.POSITIVE_INFINITY;
 
     /**
+     * Distance reported for a vertex whose cheapest route has no lower bound.
+     *
+     * Negative infinity is not a stand-in for a very small number here but the
+     * literal answer: when a cycle of negative total weight lies on a route to a
+     * vertex, going around that cycle once more lowers the total, so no cheapest
+     * route exists and no finite number could be reported without being wrong.
+     * Choosing this value rather than an exception lets a caller keep the
+     * distances that are still meaningful, since a graph may well hold a negative
+     * cycle in one corner and perfectly ordinary routes everywhere else.
+     */
+    public static final double UNBOUNDED = Double.NEGATIVE_INFINITY;
+
+    /**
      * Index reported when no vertex satisfies a search.
      *
      * Vertices are addressed by their position in the snapshot below, so no valid
@@ -169,6 +182,18 @@ public class BellmanFord {
      * recognisable as complete when it arrives back here.
      */
     private final Vertex sourceVertex;
+
+    /**
+     * Whether a cycle of negative total weight lies on a route out of the source.
+     *
+     * Recorded because its absence is a guarantee the caller needs in order to
+     * trust the distances, and its presence is a finding in its own right: it is
+     * the answer to questions such as whether a sequence of conversions can be
+     * repeated for unbounded gain. It reports only cycles the source can reach,
+     * since a cycle in a part of the graph no route leads to affects no distance
+     * this instance holds and is not this instance's business to report.
+     */
+    private final boolean negativeCycleFound;
 
     /**
      * Computes the cheapest routes from the specified source vertex through the
@@ -268,6 +293,10 @@ public class BellmanFord {
 
         // Spread that one known distance through the arcs until nothing improves.
         computeShortestPaths();
+
+        // Anything that still improves afterwards can only do so through a
+        // negative cycle, which is recorded rather than answered with a number.
+        this.negativeCycleFound = markUnboundedVertices();
     }
 
     /**
@@ -375,6 +404,121 @@ public class BellmanFord {
                 break;
             }
         }
+    }
+
+    /**
+     * Finds the vertices whose distance is driven down without bound by a negative
+     * cycle and records them as such.
+     *
+     * Detailed explanation of:
+     * - Purpose: Separates the vertices with a genuine cheapest route from those
+     *   that have none, and reports whether any of the latter exist.
+     * - Business context: The rounds before this one settle every distance that
+     *   can settle. If an arc can still improve a distance afterwards, the route it
+     *   improves must use more edges than a route without repeated vertices could,
+     *   so it goes around a cycle, and since it improves the total, that cycle has
+     *   negative weight. Every vertex behind such an arc can then be made
+     *   arbitrarily cheap by going around the cycle again, so it has no cheapest
+     *   route and is recorded as unbounded rather than given whichever number the
+     *   rounds happened to stop at. The distinction matters to a caller: an
+     *   unbounded vertex is reachable, which an unreachable one is not, and the two
+     *   would otherwise be indistinguishable from the outside.
+     * - Processing steps:
+     *   1. Sweep all arcs once more and mark the head of every arc that still
+     *      improves. These heads sit on or behind a negative cycle.
+     *   2. Spread that mark along the arcs until it stops spreading, which carries
+     *      it around the whole cycle and into everything reachable from it.
+     *   3. Overwrite the distance of every marked vertex with the unbounded value
+     *      and drop its predecessor, since no cheapest route exists to record.
+     * - Assumptions: Assumes the relaxation rounds have already run to completion,
+     *   so that a further improvement can only come from a cycle rather than from
+     *   a route the rounds had not yet reached.
+     * - Side effects: Overwrites distances and predecessors of the affected
+     *   vertices. Vertices not behind a negative cycle keep the results the rounds
+     *   established for them, which is what allows a result to be partly usable.
+     *
+     * The mark is spread with the same repeated sweep the algorithm uses
+     * elsewhere, rather than with a traversal from each affected vertex. The
+     * arcs are already at hand in their flat form, the bound is the same, and
+     * reusing the shape keeps the class free of a second way of walking the graph.
+     *
+     * Time complexity: O(v * a) in the worst case, with v vertices and a arcs: one
+     * detection sweep plus at most as many spreading sweeps as there are vertices.
+     * The spreading stops as soon as a sweep marks nothing new, and is skipped
+     * entirely when the detection sweep finds nothing, which is the ordinary case.
+     * Space complexity: O(v) for the record of affected vertices, which is
+     * discarded when this method returns.
+     *
+     * @return
+     * True when at least one vertex reachable from the source lies on or behind a
+     * cycle of negative total weight; false when every reachable vertex has a
+     * genuine cheapest route, in which case no distance was changed here.
+     */
+    private boolean markUnboundedVertices() {
+        /*
+         * Records which vertices have no lower bound. Kept local because it is
+         * scaffolding: once the distances have been overwritten, the unbounded
+         * value in the distance array says the same thing.
+         */
+        boolean[] unbounded = new boolean[vertices.length];
+        boolean anyFound = false;
+
+        /*
+         * One sweep beyond the rounds. An arc that still improves its head cannot
+         * be part of any route without repeated vertices, so it goes around a
+         * cycle that lowers the total.
+         */
+        for (int arc = 0; arc < arcTails.length; arc++) {
+            double distanceToTail = distances[arcTails[arc]];
+
+            if (distanceToTail != UNREACHABLE && distanceToTail + arcWeights[arc] < distances[arcHeads[arc]]) {
+                unbounded[arcHeads[arc]] = true;
+                anyFound = true;
+            }
+        }
+
+        // Nothing improves any more, so every reachable vertex has a genuine
+        // cheapest route and the distances stand as they are.
+        if (!anyFound) {
+            return false;
+        }
+
+        /*
+         * Spread the mark forward along the arcs. This carries it around the whole
+         * cycle, since a cycle leads back to itself, and onwards into everything
+         * that can be reached from it, all of which can be made arbitrarily cheap
+         * by looping first.
+         */
+        for (int round = 0; round < vertices.length; round++) {
+            boolean spread = false;
+
+            for (int arc = 0; arc < arcTails.length; arc++) {
+                if (unbounded[arcTails[arc]] && !unbounded[arcHeads[arc]]) {
+                    unbounded[arcHeads[arc]] = true;
+                    spread = true;
+                }
+            }
+
+            // The mark has reached everything it can; further sweeps would repeat
+            // the same comparisons for nothing.
+            if (!spread) {
+                break;
+            }
+        }
+
+        /*
+         * Replace the meaningless numbers the rounds left behind. The predecessor
+         * is dropped as well, because the chain it belongs to runs around the
+         * cycle and describes no route a caller could travel.
+         */
+        for (int index = 0; index < vertices.length; index++) {
+            if (unbounded[index]) {
+                distances[index] = UNBOUNDED;
+                predecessors[index] = null;
+            }
+        }
+
+        return true;
     }
 
     /**
