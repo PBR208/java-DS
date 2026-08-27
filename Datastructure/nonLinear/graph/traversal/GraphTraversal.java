@@ -4,6 +4,7 @@ import nonLinear.graph.base.Graph;
 import nonLinear.graph.base.Vertex;
 
 import linear.list.SinglyLinkedList;
+import linear.queue.Queue;
 
 /**
  * Purpose:
@@ -181,6 +182,140 @@ public class GraphTraversal {
         // sharing an identifier are two different vertices, and only the one the
         // graph holds has neighbours in it.
         return graph.getVertex(pVertex.getID()) == pVertex;
+    }
+
+    /**
+     * Walks the graph breadth-first from the specified vertex and reports the
+     * order in which the vertices were visited.
+     *
+     * Detailed explanation of:
+     * - Purpose: Visits every vertex reachable from the start, taking up the
+     *   discovered vertices in the order they were discovered.
+     * - Business context: Because the oldest discovery is always taken up first,
+     *   the walk leaves the start along all of its neighbours before it follows
+     *   any of them further, and then along all of their neighbours, so the
+     *   vertices appear in the order of their distance from the start measured in
+     *   number of edges. That property is what this walk is chosen for: the first
+     *   time a vertex is discovered, it is discovered along a shortest route in
+     *   edges, which makes this the basis of shortest-path search in an unweighted
+     *   graph and of any question about how far apart two vertices are. It is also
+     *   the walk to prefer on a graph that is wide but not deep, since it never
+     *   descends further than it must.
+     * - Processing steps:
+     *   1. Refuse a start vertex the graph does not hold, reporting an empty
+     *      order.
+     *   2. Clear the marks of all vertices, so that the walk begins from a known
+     *      state regardless of what ran before it.
+     *   3. Mark the start and place it in the queue of pending vertices.
+     *   4. While vertices are pending, take the oldest, record it in the result,
+     *      and place every neighbour that is not yet marked into the queue,
+     *      marking it as it goes in.
+     * - Assumptions: Assumes the graph reports the neighbours of a vertex without
+     *   modifying the graph, which the contract requires, and that no other
+     *   traversal is running over the same graph, whose marks this one uses as its
+     *   record.
+     * - Side effects: Clears every vertex mark at the start and leaves the marks
+     *   of exactly the visited vertices set when it returns. That residue is
+     *   deliberately not cleaned up, because it answers a question the result list
+     *   does not: after the call, the unmarked vertices are precisely those the
+     *   start cannot reach, so a caller may ask the graph whether all vertices are
+     *   marked to learn whether the graph, read from this vertex, covers
+     *   everything.
+     *
+     * A vertex is marked when it enters the queue rather than when it leaves it,
+     * which is the detail the correctness of this walk rests on. Several vertices
+     * may name the same neighbour, and marking on entry is what keeps that
+     * neighbour from being queued once per naming and consequently from appearing
+     * several times in the result. Marking on exit would still terminate, since
+     * the marks would eventually catch up, but the queue could grow to the number
+     * of edges and a vertex could be reported more than once.
+     *
+     * Time complexity: O(v * n + e) with v vertices and e edges, where n is the
+     * cost the underlying representation charges for one neighbour query; each
+     * vertex is taken up at most once and each edge is examined at most once from
+     * each end it is reachable through. Over the list-based representations of
+     * this package a neighbour query scans the whole edge collection, so the walk
+     * costs O(v * e) there, and only a representation holding an adjacency list
+     * per vertex reaches the O(v + e) that this walk is usually quoted with.
+     * Space complexity: O(v); the queue holds at most every vertex once, and the
+     * result holds every visited vertex exactly once. The marks add nothing, since
+     * they live on the vertices the graph already holds.
+     *
+     * @param pStartVertex
+     * The vertex to start from. Must be an instance the graph currently holds; a
+     * null vertex, or one belonging to another graph, yields an empty order rather
+     * than an exception, which matches how the graph implementations of this
+     * package answer a request they cannot serve.
+     *
+     * @return
+     * A new list holding every vertex reachable from the start, the start itself
+     * first and the remaining vertices in non-decreasing distance from it,
+     * positioned at its first element. Empty exactly when the start vertex is not
+     * one of this graph's. Never null.
+     */
+    public SinglyLinkedList<Vertex> breadthFirst(Vertex pStartVertex) {
+        SinglyLinkedList<Vertex> visitingOrder = new SinglyLinkedList<>();
+
+        // A vertex the graph does not hold has no neighbours here, and reporting
+        // it as visited would describe a walk through something outside the graph.
+        if (!belongsToGraph(pStartVertex)) {
+            return visitingOrder;
+        }
+
+        /*
+         * Start from a known state. The marks belong to the graph and survive
+         * whatever ran before this call, so a walk that skipped this step could
+         * mistake the residue of an earlier one for its own progress and would
+         * report only part of what is reachable.
+         */
+        graph.setAllVertexMarks(false);
+
+        // Pending vertices are held in a queue, and that choice is the whole
+        // difference to the depth-first walk: the queue hands back the oldest
+        // discovery, which is what keeps the exploration close to the start.
+        Queue<Vertex> pending = new Queue<>();
+
+        // The start is discovered by definition, so it is marked and queued
+        // before the loop rather than inside it.
+        pStartVertex.setMark(true);
+        pending.enqueue(pStartVertex);
+
+        while (!pending.isEmpty()) {
+            // Take the oldest pending vertex. The queue separates reading from
+            // removing, so both steps are needed here.
+            Vertex current = pending.front();
+            pending.dequeue();
+
+            // Every vertex that reaches this point has been marked already and is
+            // therefore recorded exactly once.
+            visitingOrder.append(current);
+
+            /*
+             * Ask the graph, not the representation: whatever getNeighbours means
+             * for the graph at hand is what this walk follows. Over a directed
+             * graph that is the successors alone, which is precisely why the same
+             * code reports directed reachability there.
+             */
+            SinglyLinkedList<Vertex> neighbours = graph.getNeighbours(current);
+            neighbours.toFirst();
+            while (neighbours.hasAccess()) {
+                Vertex neighbour = neighbours.getContent();
+
+                // Mark on entry, not on exit: a neighbour named by several
+                // vertices must be queued once, or it would be reported several
+                // times over.
+                if (!neighbour.isMarked()) {
+                    neighbour.setMark(true);
+                    pending.enqueue(neighbour);
+                }
+                neighbours.next();
+            }
+        }
+
+        // Hand the order back ready to be read, as every list-returning operation
+        // of this package does.
+        visitingOrder.toFirst();
+        return visitingOrder;
     }
 
 }
