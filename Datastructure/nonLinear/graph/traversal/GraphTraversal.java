@@ -75,6 +75,42 @@ import linear.stack.Stack;
  * for. It never asks which representation it is walking, only what the neighbours
  * of a vertex are, which is why it works unchanged over a directed graph and
  * there reports precisely the vertices reachable along the direction of the arcs.
+ *
+ * Complexity summary, with v as the number of vertices, e as the number of edges
+ * and n as the cost the underlying representation charges for a single neighbour
+ * query:
+ * - construction: O(1) time, O(1) space
+ * - breadthFirst: O(v * n + e) time, O(v) space
+ * - depthFirst: O(v * n + e) time, O(e) space
+ * - isReachable: O(v * n + e) time, O(v) space
+ *
+ * The bound both walks are usually quoted with, O(v + e), assumes a
+ * representation that hands back the neighbours of a vertex in time proportional
+ * to their number. None of the representations of this package does: the
+ * adjacency list and the directed graph examine every edge for each query, which
+ * makes a walk O(v * e) over them, and the adjacency matrix examines one row,
+ * which makes it O(v * v) there. That is a property of what is being walked
+ * rather than of the walk, and it is stated here because the difference is large
+ * enough to decide which representation a graph should be held in when it is
+ * walked often. The walks themselves take up each vertex at most once and examine
+ * each edge at most once from either end it is reachable through.
+ *
+ * The space bounds differ between the two walks for a reason worth keeping in
+ * mind when choosing between them on a large graph. The breadth-first queue holds
+ * each vertex at most once, because a vertex is marked as it enters; the
+ * depth-first stack may hold a vertex once per edge leading to it, because
+ * marking has to be deferred until a vertex is taken up for the order to be a
+ * depth-first order at all. Both walks are iterative, so neither consumes call
+ * stack in proportion to the depth of the graph, which is what a recursive
+ * depth-first walk would do and what would make a long chain of vertices fail
+ * where these walks succeed.
+ *
+ * Neither walk allocates anything per vertex beyond the pending collection and
+ * the reported order, since the record of what has been visited is kept in the
+ * marks the graph already carries. That is what makes the marks part of this
+ * class's contract rather than an implementation detail: they are cleared when a
+ * walk begins and left set on exactly the visited vertices when it ends, so the
+ * unmarked vertices afterwards are precisely those the start could not reach.
  */
 public class GraphTraversal {
 
