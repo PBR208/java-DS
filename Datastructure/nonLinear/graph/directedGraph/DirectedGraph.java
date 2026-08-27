@@ -697,4 +697,368 @@ public class DirectedGraph {
         }
     }
 
+    /**
+     * Collects the arcs that name the specified vertex at the specified endpoint
+     * position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the one scan that both direction-sensitive arc queries
+     *   are expressed in, the position deciding which of the two is meant.
+     * - Business context: The arcs leaving a vertex and the arcs arriving at it
+     *   differ in nothing but which end of the endpoint pair is examined, so
+     *   writing the scan twice would leave two places for the two directions to
+     *   drift apart in. Passing the position rather than a flag keeps the call
+     *   sites readable, since they name TAIL_INDEX or HEAD_INDEX and thereby state
+     *   which end of an arc they mean.
+     * - Processing steps: Scans the arc list once and collects every arc whose
+     *   endpoint at the given position is the given vertex.
+     * - Assumptions: Assumes the position is one of the two endpoint constants of
+     *   this class; no other value describes an end of an arc, and the array
+     *   access would fail for one.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs; the flat arc list keeps no
+     * per-vertex index, so every arc is examined regardless of how few match.
+     * Space complexity: O(k) for the returned list, where k is the number of
+     * matching arcs.
+     *
+     * @param pVertex
+     * The vertex to match, compared by reference. May be null or foreign to this
+     * graph, in which case nothing matches.
+     *
+     * @param pEndpointIndex
+     * The endpoint position the vertex must occupy: TAIL_INDEX for the arcs
+     * leaving it, HEAD_INDEX for the arcs arriving at it.
+     *
+     * @return
+     * A new list holding the matching arcs, positioned at its first element.
+     * Empty when no arc matches. Never null.
+     */
+    private SinglyLinkedList<Edge> arcsWithEndpointAt(Vertex pVertex, int pEndpointIndex) {
+        SinglyLinkedList<Edge> result = new SinglyLinkedList<>();
+
+        arcs.toFirst();
+        while (arcs.hasAccess()) {
+            if (arcs.getContent().getVertices()[pEndpointIndex] == pVertex) {
+                result.append(arcs.getContent());
+            }
+            arcs.next();
+        }
+
+        result.toFirst();
+        return result;
+    }
+
+    /**
+     * Collects the far endpoints of the arcs that name the specified vertex at the
+     * specified endpoint position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Turns the arcs touching a vertex in one direction into the
+     *   vertices at their other end, which is what an adjacency query reports.
+     * - Business context: Successors and predecessors are the same walk read from
+     *   opposite ends, so both are expressed here. The far endpoint is derived
+     *   from the matched one rather than passed in, which removes the possibility
+     *   of a call site asking for the tails of the arcs leaving a vertex and
+     *   receiving that vertex back once per arc.
+     * - Processing steps: Determines the opposite endpoint position, then scans
+     *   the arc list and collects the vertex at that position of every arc naming
+     *   the given vertex at the given one.
+     * - Assumptions: Assumes the position is one of the two endpoint constants,
+     *   and that the two constants are the only positions an endpoint pair has,
+     *   which is what makes the derivation of the opposite position below valid.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs, for the same reason as the arc
+     * collection it mirrors.
+     * Space complexity: O(k) for the returned list, where k is the number of
+     * matching arcs.
+     *
+     * @param pVertex
+     * The vertex to match, compared by reference. May be null or foreign to this
+     * graph, in which case nothing matches.
+     *
+     * @param pEndpointIndex
+     * The endpoint position the vertex must occupy: TAIL_INDEX to collect the
+     * heads of the arcs leaving it, HEAD_INDEX to collect the tails of the arcs
+     * arriving at it.
+     *
+     * @return
+     * A new list holding the far endpoint of every matching arc, positioned at its
+     * first element. A vertex reached by several arcs appears once per arc, which
+     * cannot happen while insertion refuses a second arc in the same direction
+     * between the same pair. Empty when no arc matches. Never null.
+     */
+    private SinglyLinkedList<Vertex> oppositeEndpointsAt(Vertex pVertex, int pEndpointIndex) {
+        /*
+         * The two endpoint positions are the only ones an arc has, so their sum is
+         * a constant and subtracting the matched position from it yields the other
+         * one. Deriving it this way keeps the two constants as the single
+         * definition of what an endpoint position is.
+         */
+        int oppositeIndex = TAIL_INDEX + HEAD_INDEX - pEndpointIndex;
+
+        SinglyLinkedList<Vertex> result = new SinglyLinkedList<>();
+
+        arcs.toFirst();
+        while (arcs.hasAccess()) {
+            Vertex[] endpoints = arcs.getContent().getVertices();
+
+            if (endpoints[pEndpointIndex] == pVertex) {
+                result.append(endpoints[oppositeIndex]);
+            }
+            arcs.next();
+        }
+
+        result.toFirst();
+        return result;
+    }
+
+    /**
+     * Counts the arcs that name the specified vertex at the specified endpoint
+     * position.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the count both degree queries are expressed in.
+     * - Business context: A degree is asked for far more often than the arcs
+     *   behind it are, for instance by a topological sort that only wants to know
+     *   which vertices currently have nothing pointing at them, and counting
+     *   directly avoids building a list that the caller would immediately discard.
+     * - Processing steps: Scans the arc list once and increments a counter for
+     *   every arc whose endpoint at the given position is the given vertex.
+     * - Assumptions: Assumes the position is one of the two endpoint constants.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs.
+     * Space complexity: O(1); only the counter is held.
+     *
+     * @param pVertex
+     * The vertex to match, compared by reference. May be null or foreign to this
+     * graph, in which case the count is zero.
+     *
+     * @param pEndpointIndex
+     * The endpoint position the vertex must occupy: TAIL_INDEX to count the arcs
+     * leaving it, HEAD_INDEX to count the arcs arriving at it.
+     *
+     * @return
+     * The number of matching arcs, never negative.
+     */
+    private int countArcsWithEndpointAt(Vertex pVertex, int pEndpointIndex) {
+        int count = 0;
+
+        arcs.toFirst();
+        while (arcs.hasAccess()) {
+            if (arcs.getContent().getVertices()[pEndpointIndex] == pVertex) {
+                count = count + 1;
+            }
+            arcs.next();
+        }
+
+        return count;
+    }
+
+    /**
+     * Retrieves the arcs leaving the specified vertex.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the connections that can be travelled starting from the
+     *   vertex, together with the weights of those steps.
+     * - Business context: This is the query a traversal or a shortest-path search
+     *   is built on, since both advance by taking a vertex and considering what
+     *   leaves it. It is offered next to the incidence query of the graph contract
+     *   rather than in place of it, because the two genuinely differ here: an arc
+     *   arriving at the vertex touches it but cannot be travelled from it, and
+     *   handing such an arc to a traversal would let the search move against the
+     *   direction of the graph, which is exactly the error a directed
+     *   representation exists to prevent.
+     * - Processing steps: Collects the arcs naming the vertex as their tail.
+     * - Assumptions: None beyond the invariants of the graph.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs.
+     * Space complexity: O(k) for the returned list, where k is the out-degree of
+     * the vertex.
+     *
+     * @param pVertex
+     * The vertex whose outgoing arcs are to be collected, compared by reference.
+     * May be null or foreign to this graph, in which case the result is empty.
+     *
+     * @return
+     * A new list holding every arc leaving the vertex, positioned at its first
+     * element. Empty when nothing leaves it. Never null.
+     */
+    public SinglyLinkedList<Edge> getOutgoingEdges(Vertex pVertex) {
+        return arcsWithEndpointAt(pVertex, TAIL_INDEX);
+    }
+
+    /**
+     * Retrieves the arcs arriving at the specified vertex.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the connections that lead to the vertex, together with
+     *   the weights of those steps.
+     * - Business context: This is the query that has no counterpart in the
+     *   undirected representations of this package, where every connection leads
+     *   both ways and the question therefore collapses into the incidence query.
+     *   It is what a caller needs in order to ask who depends on a target, which
+     *   pages link to a page, or whether a vertex can still be reached at all,
+     *   and it is what the detection of strongly connected components walks in its
+     *   second pass.
+     * - Processing steps: Collects the arcs naming the vertex as their head.
+     * - Assumptions: None beyond the invariants of the graph.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs. This is the query the flat arc
+     * list serves as well as it serves the outgoing one, which is a genuine
+     * advantage of the representation: a storage keeping an outgoing list per
+     * vertex answers the outgoing query faster and this one only by scanning
+     * everything or by maintaining a second index.
+     * Space complexity: O(k) for the returned list, where k is the in-degree of
+     * the vertex.
+     *
+     * @param pVertex
+     * The vertex whose incoming arcs are to be collected, compared by reference.
+     * May be null or foreign to this graph, in which case the result is empty.
+     *
+     * @return
+     * A new list holding every arc arriving at the vertex, positioned at its first
+     * element. Empty when nothing arrives at it. Never null.
+     */
+    public SinglyLinkedList<Edge> getIncomingEdges(Vertex pVertex) {
+        return arcsWithEndpointAt(pVertex, HEAD_INDEX);
+    }
+
+    /**
+     * Retrieves the vertices reachable from the specified vertex in one step.
+     *
+     * Detailed explanation of:
+     * - Purpose: Names the vertices an arc leads to from the given one.
+     * - Business context: This is the adjacency a traversal follows, and in a
+     *   directed graph it is deliberately one-sided: a successor of a vertex need
+     *   not have it as a successor in return. That asymmetry is what makes the
+     *   reachable set of a directed graph a genuinely different object from the
+     *   connected component of an undirected one, and it is why a search must
+     *   record where it has been even in a graph without cycles.
+     * - Processing steps: Collects the head of every arc leaving the vertex.
+     * - Assumptions: None beyond the invariants of the graph.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs.
+     * Space complexity: O(k) for the returned list, where k is the out-degree of
+     * the vertex.
+     *
+     * @param pVertex
+     * The vertex whose successors are to be collected, compared by reference. May
+     * be null or foreign to this graph, in which case the result is empty.
+     *
+     * @return
+     * A new list holding every vertex reachable in one step, positioned at its
+     * first element. Empty when nothing leaves the vertex. Never null.
+     */
+    public SinglyLinkedList<Vertex> getSuccessors(Vertex pVertex) {
+        return oppositeEndpointsAt(pVertex, TAIL_INDEX);
+    }
+
+    /**
+     * Retrieves the vertices from which the specified vertex is reachable in one
+     * step.
+     *
+     * Detailed explanation of:
+     * - Purpose: Names the vertices an arc leads from to the given one.
+     * - Business context: The counterpart of the successor query and the half of
+     *   the adjacency an undirected representation cannot separate out. A caller
+     *   asks for it when the interesting direction is backwards: which tasks must
+     *   finish before this one may start, which vertices would lose their route to
+     *   a target if it were removed, or which sources a value flowed in from.
+     * - Processing steps: Collects the tail of every arc arriving at the vertex.
+     * - Assumptions: None beyond the invariants of the graph.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs.
+     * Space complexity: O(k) for the returned list, where k is the in-degree of
+     * the vertex.
+     *
+     * @param pVertex
+     * The vertex whose predecessors are to be collected, compared by reference.
+     * May be null or foreign to this graph, in which case the result is empty.
+     *
+     * @return
+     * A new list holding every vertex that reaches the given one in a single step,
+     * positioned at its first element. Empty when nothing arrives at it. Never
+     * null.
+     */
+    public SinglyLinkedList<Vertex> getPredecessors(Vertex pVertex) {
+        return oppositeEndpointsAt(pVertex, HEAD_INDEX);
+    }
+
+    /**
+     * Reports how many arcs leave the specified vertex.
+     *
+     * Detailed explanation of:
+     * - Purpose: Measures how far the graph branches out from the vertex.
+     * - Business context: A vertex with an out-degree of zero is a sink, from
+     *   which no step is possible, and recognising one is what lets a search
+     *   abandon a branch and what a topological sort peels the graph from when it
+     *   works backwards. The count is reported directly rather than through the
+     *   arcs it counts, so that a caller interested only in the number allocates
+     *   nothing.
+     * - Processing steps: Counts the arcs naming the vertex as their tail.
+     * - Assumptions: None beyond the invariants of the graph.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pVertex
+     * The vertex whose outgoing arcs are to be counted, compared by reference. May
+     * be null or foreign to this graph, in which case the count is zero.
+     *
+     * @return
+     * The number of arcs leaving the vertex, never negative. Zero marks a sink,
+     * and equally a vertex this graph does not hold, which a caller in doubt
+     * distinguishes by looking the vertex up first.
+     */
+    public int getOutDegree(Vertex pVertex) {
+        return countArcsWithEndpointAt(pVertex, TAIL_INDEX);
+    }
+
+    /**
+     * Reports how many arcs arrive at the specified vertex.
+     *
+     * Detailed explanation of:
+     * - Purpose: Measures how much of the graph leads into the vertex.
+     * - Business context: A vertex with an in-degree of zero is a source, which
+     *   nothing points at, and the set of sources is exactly what a topological
+     *   sort begins from and repeatedly re-derives as it removes vertices. The
+     *   in-degree is therefore the single most useful directed quantity a graph
+     *   can report, and it is one an undirected representation cannot express at
+     *   all, since there every connection would count towards both degrees.
+     * - Processing steps: Counts the arcs naming the vertex as their head.
+     * - Assumptions: None beyond the invariants of the graph.
+     * - Side effects: Moves the cursor of the internal arc list; the content of
+     *   the graph is untouched.
+     *
+     * Time complexity: O(a) in the number of arcs.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pVertex
+     * The vertex whose incoming arcs are to be counted, compared by reference. May
+     * be null or foreign to this graph, in which case the count is zero.
+     *
+     * @return
+     * The number of arcs arriving at the vertex, never negative. Zero marks a
+     * source, and equally a vertex this graph does not hold.
+     */
+    public int getInDegree(Vertex pVertex) {
+        return countArcsWithEndpointAt(pVertex, HEAD_INDEX);
+    }
+
 }
