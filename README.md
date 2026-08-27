@@ -44,7 +44,7 @@ The goal of this project is to:
 - [ ] Trie (Prefix Tree)  
 - [x] Segment Tree  
 - [x] Fenwick Tree (Binary Indexed Tree)  
-- [ ] Disjoint Set (Union-Find)
+- [x] Disjoint Set (Union-Find)
 
 ---
 

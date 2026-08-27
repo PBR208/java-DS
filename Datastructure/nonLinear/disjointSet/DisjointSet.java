@@ -77,6 +77,34 @@ package nonLinear.disjointSet;
  * are never traversed downwards, and they are deliberately flattened towards a
  * single level, because the only thing ever asked of them is which representative
  * sits at the top.
+ *
+ * Complexity summary, with n as the number of covered elements and alpha as the
+ * inverse Ackermann function:
+ * - construction: O(n), one write per element into each of the three arrays
+ * - find: O(alpha(n)) amortised; O(log n) for a single call in the worst case
+ * - union: O(alpha(n)) amortised, dominated by its two lookups
+ * - connected: O(alpha(n)) amortised, two lookups and one comparison
+ * - sizeOf: O(alpha(n)) amortised, one lookup and one array read
+ * - setCount, size, isEmpty: O(1)
+ * - overall space: O(n); exactly three integer entries per element
+ *
+ * The amortised bound is the joint result of both heuristics and is lost as soon
+ * as either is dropped: union by rank alone leaves trees of logarithmic height
+ * that are walked from the bottom every time, and path flattening alone still
+ * allows a tall tree to be built before the first walk pays to shorten it, so
+ * each heuristic on its own yields O(log n). Together they yield a bound that is
+ * not constant in theory but is at most four for any universe that could be held
+ * in memory, which is why this structure is usually described as answering both
+ * of its questions in constant time.
+ *
+ * The figures also explain what the structure refuses to offer. There is no
+ * operation listing the members of a group, no operation separating one, and no
+ * operation removing an element, because all three would have to undo the
+ * flattening that the bound above depends on: the representation deliberately
+ * keeps no record of how a group was assembled, only that it was. A caller
+ * needing the members enumerates the universe once and groups the elements by
+ * their representative, which costs O(n alpha(n)) and is the intended way to turn
+ * the partition back into explicit sets.
  */
 public class DisjointSet {
 
