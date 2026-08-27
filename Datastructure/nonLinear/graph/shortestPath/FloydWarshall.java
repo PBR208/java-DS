@@ -211,6 +211,92 @@ public class FloydWarshall {
         // Read the graph into the tables; from this point on the algorithm works
         // on its own arrays and never asks the graph again.
         initialiseTables(pGraph);
+
+        // Widen those direct routes into the cheapest routes over any number of
+        // intermediate vertices.
+        admitIntermediateVertices();
+    }
+
+    /**
+     * Admits each vertex in turn as a permitted intermediate stop and improves
+     * every pair that can profit from it.
+     *
+     * Detailed explanation of:
+     * - Purpose: Turns the table of direct routes into the table of cheapest
+     *   routes.
+     * - Business context: This is the algorithm itself, and its correctness rests
+     *   on a statement about the table rather than about any single route. After
+     *   the first k vertices have been admitted, each entry holds the cheapest
+     *   route between its pair that stops only at those k vertices on the way.
+     *   Admitting one more vertex can only help a pair in one way, by letting its
+     *   route pass through that vertex, and the cheapest such route is the
+     *   cheapest way to the new vertex followed by the cheapest way onwards, both
+     *   of which the table already holds. One comparison per pair therefore
+     *   carries the statement from k to k plus one, and after every vertex has
+     *   been admitted, no route remains that the table has not considered.
+     * - Processing steps: For each vertex in turn, and for every ordered pair,
+     *   compares the route through that vertex against the entry standing for the
+     *   pair and replaces the entry when the detour is cheaper.
+     * - Assumptions: Assumes the tables have been initialised with the direct
+     *   routes and the zero diagonal. Nothing is assumed about the weights: unlike
+     *   the greedy search of this package, this method never declares an entry
+     *   final while vertices remain to be admitted, which is why negative weights
+     *   cost it nothing.
+     * - Side effects: Writes both tables.
+     *
+     * The order of the three loops is not interchangeable. The admitted vertex
+     * must be the outermost, because the statement above is about the whole table
+     * after each admission; moving it inwards would let a pair be improved through
+     * a vertex whose own row and column had not yet been completed for the
+     * admissions before it, and the result would depend on the order the pairs
+     * happen to be visited in.
+     *
+     * The first-step entry of an improved pair is taken from the route to the
+     * admitted vertex rather than set to that vertex. What the table records is
+     * where to go first, and the first step of the detour is the first step of the
+     * way to the intermediate vertex, which may well be several steps before it.
+     *
+     * Time complexity: O(v * v * v) in the number of vertices, one comparison per
+     * pair per admitted vertex. The bound is also the best case: unlike the
+     * repeated relaxation of the Bellman-Ford algorithm, this method has no state
+     * that would let it notice it is finished early.
+     * Space complexity: O(1) beyond the tables already held; every improvement is
+     * written in place.
+     */
+    private void admitIntermediateVertices() {
+        for (int intermediate = 0; intermediate < vertices.length; intermediate++) {
+            for (int origin = 0; origin < vertices.length; origin++) {
+                double distanceToIntermediate = distances[origin][intermediate];
+
+                /*
+                 * A pair that cannot reach the admitted vertex at all cannot be
+                 * improved through it, and skipping the whole row here saves a
+                 * pass over the destinations rather than merely one comparison.
+                 */
+                if (distanceToIntermediate != UNREACHABLE) {
+                    for (int destination = 0; destination < vertices.length; destination++) {
+                        double distanceFromIntermediate = distances[intermediate][destination];
+
+                        // The admitted vertex must also lead onwards to the
+                        // destination for the detour to exist at all.
+                        if (distanceFromIntermediate != UNREACHABLE) {
+                            double detour = distanceToIntermediate + distanceFromIntermediate;
+
+                            if (detour < distances[origin][destination]) {
+                                distances[origin][destination] = detour;
+
+                                /*
+                                 * The route now begins the way the route to the
+                                 * intermediate vertex begins; that vertex itself
+                                 * may lie much further along.
+                                 */
+                                firstSteps[origin][destination] = firstSteps[origin][intermediate];
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**
