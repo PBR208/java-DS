@@ -265,6 +265,116 @@ public class BellmanFord {
         // The source is reached from itself at no cost, and this single known
         // value is what every round spreads further into the graph.
         distances[indexOf(pSourceVertex)] = 0.0;
+
+        // Spread that one known distance through the arcs until nothing improves.
+        computeShortestPaths();
+    }
+
+    /**
+     * Offers every arc to the distance estimates once and reports whether any of
+     * them improved.
+     *
+     * Detailed explanation of:
+     * - Purpose: Performs a single relaxation round, which is the step the whole
+     *   algorithm consists of repeating.
+     * - Business context: Relaxing an arc means asking whether reaching its head
+     *   by way of its tail would be cheaper than the cheapest route to that head
+     *   known so far, and recording the improvement when it would. Sweeping all
+     *   arcs blindly, rather than choosing which to relax as the greedy search of
+     *   this package does, is exactly what makes negative weights harmless here:
+     *   no estimate is ever declared final, so an arc that cheapens a route long
+     *   after that route was first found still gets its chance in a later round.
+     * - Processing steps: Walks the three arc arrays in step, skipping arcs whose
+     *   tail is still unreached, and replaces a head's distance and predecessor
+     *   whenever the route through the tail is cheaper.
+     * - Assumptions: Assumes the arc arrays are filled and consistent with the
+     *   vertex snapshot, which the extraction at construction guarantees.
+     * - Side effects: Writes distances and predecessors for every improved vertex.
+     *
+     * An arc leaving an unreached tail is skipped rather than relaxed. Arithmetic
+     * on infinity would give the right answer here, since infinity plus a weight
+     * is infinity again and cannot undercut anything, but the skip states the
+     * intent directly and keeps the loop from depending on that property.
+     *
+     * Time complexity: O(a) in the number of arcs; each is examined once and
+     * costs an addition and a comparison.
+     * Space complexity: O(1); the round works entirely in the existing arrays.
+     *
+     * @return
+     * True when at least one distance improved during this round, which means a
+     * further round may still find more; false when the round changed nothing, in
+     * which case no later round could change anything either.
+     */
+    private boolean relaxAllArcs() {
+        boolean improved = false;
+
+        for (int arc = 0; arc < arcTails.length; arc++) {
+            double distanceToTail = distances[arcTails[arc]];
+
+            // An arc leaving a vertex no route has reached offers no route to its
+            // head either.
+            if (distanceToTail != UNREACHABLE) {
+                // The cost of reaching the head by travelling this arc.
+                double offeredDistance = distanceToTail + arcWeights[arc];
+
+                if (offeredDistance < distances[arcHeads[arc]]) {
+                    distances[arcHeads[arc]] = offeredDistance;
+                    predecessors[arcHeads[arc]] = vertices[arcTails[arc]];
+                    improved = true;
+                }
+            }
+        }
+
+        return improved;
+    }
+
+    /**
+     * Repeats the relaxation until the distances have settled.
+     *
+     * Detailed explanation of:
+     * - Purpose: Turns the initial state, in which only the source has a known
+     *   distance, into the final one, in which every reachable vertex holds the
+     *   cost of its cheapest route.
+     * - Business context: The number of rounds follows from a simple count. A
+     *   cheapest route that repeats no vertex has at most as many edges as the
+     *   graph has vertices, less one, and after the first round every route of one
+     *   edge is accounted for, after the second every route of two, and so on. As
+     *   many rounds as vertices less one therefore suffice, whatever order the
+     *   arcs happen to be swept in, which is the property that makes this
+     *   algorithm indifferent to the structure of the graph in a way the greedy
+     *   search is not.
+     * - Processing steps: Runs relaxation rounds, stopping after as many rounds as
+     *   the count allows or as soon as a round changes nothing.
+     * - Assumptions: Assumes that a cheapest route repeats no vertex, which holds
+     *   whenever no cycle of negative total weight is reachable. When one is, the
+     *   assumption fails by design and the rounds below do not converge; detecting
+     *   that condition is the task of the step that follows this one.
+     * - Side effects: Writes the distance and predecessor arrays.
+     *
+     * The early exit is worth more than it looks. The bound of one round fewer
+     * than there are vertices is a worst case reached only by a graph laid out
+     * adversarially against the sweep order; most graphs settle in a handful of
+     * rounds, and stopping as soon as a round changes nothing turns the guaranteed
+     * bound into the actual cost.
+     *
+     * Time complexity: O(v * a) in the worst case, with v vertices and a arcs;
+     * O(r * a) in practice, where r is the number of rounds until nothing changes.
+     * Space complexity: O(1) beyond the arrays already held.
+     */
+    private void computeShortestPaths() {
+        /*
+         * One round fewer than there are vertices. The loop condition is written
+         * against the vertex count directly so that the reasoning behind the bound
+         * stays visible at the place it is applied.
+         */
+        for (int round = 0; round + 1 < vertices.length; round++) {
+            if (!relaxAllArcs()) {
+                // Nothing improved, so nothing can improve any more: a round
+                // depends only on the distances it starts from, and those are
+                // unchanged.
+                break;
+            }
+        }
     }
 
     /**
