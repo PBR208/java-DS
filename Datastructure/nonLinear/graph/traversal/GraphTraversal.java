@@ -5,6 +5,7 @@ import nonLinear.graph.base.Vertex;
 
 import linear.list.SinglyLinkedList;
 import linear.queue.Queue;
+import linear.stack.Stack;
 
 /**
  * Purpose:
@@ -314,6 +315,132 @@ public class GraphTraversal {
 
         // Hand the order back ready to be read, as every list-returning operation
         // of this package does.
+        visitingOrder.toFirst();
+        return visitingOrder;
+    }
+
+    /**
+     * Walks the graph depth-first from the specified vertex and reports the order
+     * in which the vertices were visited.
+     *
+     * Detailed explanation of:
+     * - Purpose: Visits every vertex reachable from the start, always taking up
+     *   the most recently discovered vertex next.
+     * - Business context: Because the newest discovery is taken up first, the walk
+     *   follows one route as far as it leads before it returns to the most recent
+     *   junction and tries the next branch there. That is the shape a great many
+     *   graph algorithms need rather than merely prefer: cycle detection, the
+     *   ordering of dependencies and the search for strongly connected components
+     *   all rest on the fact that a depth-first walk finishes everything below a
+     *   vertex before it leaves that vertex behind. It is also the walk to prefer
+     *   on a graph that is deep but narrow, where the breadth-first queue would
+     *   hold a whole level at once for no benefit.
+     * - Processing steps:
+     *   1. Refuse a start vertex the graph does not hold, reporting an empty
+     *      order.
+     *   2. Clear the marks of all vertices.
+     *   3. Push the start onto the stack of pending vertices.
+     *   4. While vertices are pending, take the newest; skip it when it has been
+     *      visited in the meantime, otherwise mark it, record it, and push its
+     *      unmarked neighbours.
+     * - Assumptions: Assumes, as the breadth-first walk does, that the graph
+     *   reports neighbours without modifying itself and that no other traversal is
+     *   using the marks at the same time.
+     * - Side effects: Clears every vertex mark at the start and leaves the marks
+     *   of exactly the visited vertices set, which afterwards identifies the
+     *   unreachable vertices as the unmarked ones.
+     *
+     * The bookkeeping differs from the breadth-first walk in one deliberate
+     * respect: a vertex is marked when it is taken off the stack, not when it is
+     * pushed. Pushing the same vertex several times is therefore possible, and the
+     * mark test on removal is what discards the repeats. The difference is forced
+     * by what depth-first order means. A vertex discovered from two junctions must
+     * be visited from the later one, since the walk has to finish that branch
+     * before returning, and marking on entry would freeze the earlier discovery in
+     * place and produce an order that is not a depth-first order at all. The price
+     * is that the stack may hold a vertex once per edge leading to it, which is
+     * why its space bound is stated in edges below while the queue of the
+     * breadth-first walk is bounded by the vertices.
+     *
+     * The order among the branches leaving one vertex is the reverse of the order
+     * in which the graph reports its neighbours, because the stack returns them
+     * in the opposite order to the one they were pushed in. Any order among
+     * branches yields a valid depth-first walk, so this is not corrected; callers
+     * that depend on a particular branch order must impose it themselves.
+     *
+     * Time complexity: O(v * n + e) with v vertices and e edges, where n is the
+     * cost of one neighbour query in the underlying representation, giving
+     * O(v * e) over the list-based representations of this package for the same
+     * reason as the breadth-first walk.
+     * Space complexity: O(e); the stack may hold one entry per edge that leads to
+     * an unvisited vertex, and the result holds every visited vertex exactly once.
+     *
+     * @param pStartVertex
+     * The vertex to start from. Must be an instance the graph currently holds; a
+     * null vertex, or one belonging to another graph, yields an empty order.
+     *
+     * @return
+     * A new list holding every vertex reachable from the start, the start itself
+     * first and the remaining vertices in a depth-first order, positioned at its
+     * first element. The set of reported vertices is exactly the same as that of
+     * the breadth-first walk from the same start; only the order differs. Empty
+     * exactly when the start vertex is not one of this graph's. Never null.
+     */
+    public SinglyLinkedList<Vertex> depthFirst(Vertex pStartVertex) {
+        SinglyLinkedList<Vertex> visitingOrder = new SinglyLinkedList<>();
+
+        // As with the breadth-first walk, a vertex outside the graph is refused
+        // rather than reported as a one-vertex order.
+        if (!belongsToGraph(pStartVertex)) {
+            return visitingOrder;
+        }
+
+        // Begin from a known state; the marks outlive whatever ran before.
+        graph.setAllVertexMarks(false);
+
+        // Pending vertices are held in a stack, which hands back the newest
+        // discovery and thereby produces the descent this walk is named for.
+        Stack<Vertex> pending = new Stack<>();
+
+        // The start is pushed unmarked: like every other vertex, it is marked
+        // when it is taken up, which keeps the loop below to a single rule.
+        pending.push(pStartVertex);
+
+        while (!pending.isEmpty()) {
+            // Take the newest pending vertex; the stack, like the queue,
+            // separates reading from removing.
+            Vertex current = pending.top();
+            pending.pop();
+
+            /*
+             * A vertex may have been pushed several times, from several of its
+             * predecessors, and may already have been visited through one of the
+             * later pushes. The repeats are discarded here, which is what keeps
+             * every vertex in the result exactly once.
+             */
+            if (!current.isMarked()) {
+                current.setMark(true);
+                visitingOrder.append(current);
+
+                SinglyLinkedList<Vertex> neighbours = graph.getNeighbours(current);
+                neighbours.toFirst();
+                while (neighbours.hasAccess()) {
+                    Vertex neighbour = neighbours.getContent();
+
+                    /*
+                     * Already visited neighbours are not pushed at all. This is an
+                     * economy rather than a correctness measure, since the test
+                     * above would discard them anyway, but it keeps the stack from
+                     * filling with vertices the walk is finished with.
+                     */
+                    if (!neighbour.isMarked()) {
+                        pending.push(neighbour);
+                    }
+                    neighbours.next();
+                }
+            }
+        }
+
         visitingOrder.toFirst();
         return visitingOrder;
     }
