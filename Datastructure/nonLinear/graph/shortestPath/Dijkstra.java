@@ -581,4 +581,153 @@ public class Dijkstra {
         return NO_VERTEX;
     }
 
+    /**
+     * Reports the vertex every distance and route of this result is measured
+     * from.
+     *
+     * Detailed explanation of:
+     * - Purpose: Names the source the search was run from.
+     * - Business context: A result is only meaningful together with its source,
+     *   and a caller holding several results, one per source, needs to be able to
+     *   tell them apart without keeping that association itself. It is also what
+     *   makes a reconstructed route recognisable as complete, since a route ends
+     *   exactly when it arrives here.
+     * - Processing steps: Returns the vertex recorded at construction.
+     * - Assumptions: None.
+     * - Side effects: None.
+     *
+     * Time complexity: O(1).
+     * Space complexity: O(1).
+     *
+     * @return
+     * The source vertex, which is the instance the graph held at construction.
+     * Never null, since the constructor refuses any other source.
+     */
+    public Vertex getSource() {
+        return sourceVertex;
+    }
+
+    /**
+     * Reports the total weight of the cheapest route from the source to the
+     * specified vertex.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the question the search was run for, for one vertex.
+     * - Business context: This is the number a caller compares, sums or ranks:
+     *   the cost of getting there, in whatever unit the edge weights are kept in.
+     *   It is a total over a route rather than a property of the vertex, so it
+     *   only means anything relative to the source of this result, and it is
+     *   exactly as precise as the additions of the weights along that route were.
+     * - Processing steps: Locates the vertex in the snapshot and returns its
+     *   recorded distance.
+     * - Assumptions: Assumes the vertex is compared by identity, so that a
+     *   detached vertex carrying a familiar identifier is reported as unreachable
+     *   rather than answered for.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v) in the number of vertices, for the lookup of the
+     * vertex within the snapshot.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pVertex
+     * The vertex to report the distance of. May be null or foreign to the graph
+     * the search ran over, both of which are answered as unreachable.
+     *
+     * @return
+     * The total weight of the cheapest route from the source to the vertex, which
+     * is zero for the source itself, or UNREACHABLE when no route leads there and
+     * likewise when the vertex was not part of the searched graph. A caller
+     * needing to tell those two cases apart compares the vertex against the ones
+     * the graph holds before asking.
+     */
+    public double getDistance(Vertex pVertex) {
+        int index = indexOf(pVertex);
+
+        // A vertex outside the snapshot has no recorded distance, and the
+        // unreachable marker is the truthful answer for it: this result knows no
+        // route to it.
+        if (index == NO_VERTEX) {
+            return UNREACHABLE;
+        }
+
+        return distances[index];
+    }
+
+    /**
+     * Reports whether any route leads from the source to the specified vertex.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the existence of a route without the caller having to
+     *   interpret a distance.
+     * - Business context: Comparing a returned distance against infinity is easy
+     *   to write incorrectly and easy to read as an oversight, so the test is
+     *   offered as its own operation. Note that reachability here is measured
+     *   along the same edges the search followed, so over a directed graph it
+     *   means reachable along the direction of the arcs, and it may well differ
+     *   from the answer for the two vertices exchanged.
+     * - Processing steps: Compares the recorded distance against the unreachable
+     *   marker.
+     * - Assumptions: Assumes no genuine route has infinite total weight, which
+     *   holds because edge weights are finite numbers and a route has finitely
+     *   many edges.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v), dominated by the vertex lookup.
+     * Space complexity: O(1).
+     *
+     * @param pVertex
+     * The vertex to test. May be null or foreign to the searched graph, both of
+     * which are reported as not reachable.
+     *
+     * @return
+     * True when a route of finite total weight leads from the source to the
+     * vertex, which for the source itself is trivially the case; false otherwise.
+     */
+    public boolean isReachable(Vertex pVertex) {
+        return getDistance(pVertex) < UNREACHABLE;
+    }
+
+    /**
+     * Reports the vertex immediately before the specified one on its cheapest
+     * route from the source.
+     *
+     * Detailed explanation of:
+     * - Purpose: Exposes one link of the tree of shortest routes.
+     * - Business context: The predecessors are how a route is stored at all: one
+     *   vertex per vertex rather than one route per vertex, which is what keeps
+     *   the result linear in the size of the graph. A caller wanting a whole route
+     *   asks for the path instead; this operation is for callers walking the tree
+     *   themselves, for instance to find where two routes diverge or to attribute
+     *   the cost of a step to the edge that carries it.
+     * - Processing steps: Locates the vertex in the snapshot and returns the
+     *   predecessor recorded for it.
+     * - Assumptions: Assumes the predecessor chain is acyclic and ends at the
+     *   source, which the search guarantees: a predecessor is only recorded when
+     *   it improves a distance, and improvements strictly decrease along the
+     *   chain.
+     * - Side effects: None.
+     *
+     * Time complexity: O(v), dominated by the vertex lookup.
+     * Space complexity: O(1).
+     *
+     * @param pVertex
+     * The vertex whose predecessor is wanted. May be null or foreign to the
+     * searched graph, both of which are answered with none.
+     *
+     * @return
+     * The vertex the given one is best reached through, or null when it is the
+     * source, when no route reaches it, or when it was not part of the searched
+     * graph. Null therefore means the route does not continue, not that something
+     * went wrong.
+     */
+    public Vertex getPredecessor(Vertex pVertex) {
+        int index = indexOf(pVertex);
+
+        if (index == NO_VERTEX) {
+            return null;
+        }
+
+        return predecessors[index];
+    }
+
 }
