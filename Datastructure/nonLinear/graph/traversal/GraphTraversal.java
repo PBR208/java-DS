@@ -445,4 +445,74 @@ public class GraphTraversal {
         return visitingOrder;
     }
 
+    /**
+     * Reports whether one vertex can be reached from another by following edges.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the existence of a route between two vertices without
+     *   requiring the caller to walk the graph and search the result itself.
+     * - Business context: Reachability is the question a traversal is most often
+     *   run for, and phrasing it as its own operation keeps the answer honest in
+     *   the one case that is easy to get wrong by hand, namely a directed graph,
+     *   where a route from one vertex to another says nothing about a route back.
+     *   The direction of the question is therefore fixed by the order of the
+     *   arguments, and a caller interested in both directions asks twice.
+     * - Processing steps: Walks the graph breadth-first from the first vertex and
+     *   scans the reported order for the second.
+     * - Assumptions: Assumes reachability along the edges as the graph reports
+     *   them, which for a directed graph means along the direction of its arcs.
+     * - Side effects: Those of the walk it performs, namely the marks cleared at
+     *   the start and left set on every vertex reachable from the first argument.
+     *
+     * The walk is reused rather than repeated with an early exit, which is a
+     * deliberate trade. A search stopping as soon as the target appears would
+     * often finish sooner, but it would be a second copy of the traversal, and the
+     * two would have to be kept in agreement about what reachable means for the
+     * rest of this class to remain consistent. The walk is bounded by the size of
+     * the graph in either case, and this class exists to state the walks once.
+     *
+     * The breadth-first walk is used rather than the depth-first one because the
+     * two report the same set of vertices, so the choice is free, and because the
+     * breadth-first one holds fewer pending vertices while doing so.
+     *
+     * Time complexity: O(v * n + e) for the walk, where n is the cost of one
+     * neighbour query in the underlying representation, plus O(v) for the scan of
+     * its result; the walk dominates.
+     * Space complexity: O(v) for the order the walk produces, which is discarded
+     * once it has been scanned.
+     *
+     * @param pFromVertex
+     * The vertex to start from, which must be an instance the graph currently
+     * holds. A null vertex, or one belonging to another graph, reaches nothing.
+     *
+     * @param pToVertex
+     * The vertex to look for. May be null or foreign to this graph, in which case
+     * it appears in no walk and is consequently not reachable.
+     *
+     * @return
+     * True when a route of zero or more edges leads from the first vertex to the
+     * second, which includes the case of both arguments being the same vertex of
+     * this graph, since a vertex is reachable from itself along the empty route;
+     * false otherwise, including when either vertex is not one of this graph's.
+     */
+    public boolean isReachable(Vertex pFromVertex, Vertex pToVertex) {
+        // The walk already refuses a start outside the graph, and it reports the
+        // start itself first, which is what makes a vertex reachable from itself
+        // without a special case here.
+        SinglyLinkedList<Vertex> reached = breadthFirst(pFromVertex);
+
+        reached.toFirst();
+        while (reached.hasAccess()) {
+            // Identity comparison, as everywhere in this package: the walk reports
+            // the very instances the graph holds.
+            if (reached.getContent() == pToVertex) {
+                return true;
+            }
+            reached.next();
+        }
+
+        // The target did not appear in the reachable set, so no route leads to it.
+        return false;
+    }
+
 }
