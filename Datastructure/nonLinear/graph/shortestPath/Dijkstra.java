@@ -249,6 +249,190 @@ public class Dijkstra {
         // The source is reached from itself at no cost, and this single known
         // value is what the whole search grows out of.
         distances[indexOf(pSourceVertex)] = 0.0;
+
+        // Grow that one known distance into the complete result. The graph is
+        // passed rather than stored, so that nothing of it outlives this call.
+        computeShortestPaths(pGraph);
+    }
+
+    /**
+     * Settles every reachable vertex in order of increasing distance from the
+     * source, filling the distance and predecessor arrays.
+     *
+     * Detailed explanation of:
+     * - Purpose: Turns the initial state, in which only the source has a known
+     *   distance, into the final one, in which every reachable vertex has its
+     *   cheapest distance and the predecessor it is reached through.
+     * - Business context: This is the algorithm itself, and its shape follows from
+     *   a single observation: among the vertices whose distance is not yet final,
+     *   the one with the smallest current estimate cannot be improved any further.
+     *   Any route to it must leave the settled region at some point, and every
+     *   such route already costs at least that estimate before it goes anywhere
+     *   else, because all weights are non-negative. Its estimate is therefore its
+     *   true distance and may be declared final, after which the routes leading
+     *   onwards through it are offered to its neighbours. Repeating that step
+     *   settles the vertices in order of increasing distance, which is the same
+     *   order the breadth-first walk of the traversal package settles them in when
+     *   every edge has the same weight.
+     * - Processing steps:
+     *   1. Take up the unsettled vertex with the smallest current estimate.
+     *   2. Stop when none is left that any route reaches; the remaining vertices
+     *      are unreachable and keep their initial values.
+     *   3. Mark it settled and offer, to each of its neighbours, the route that
+     *      goes through it, keeping the offer when it is cheaper than the
+     *      neighbour's current estimate.
+     * - Assumptions: Assumes non-negative weights, which the constructor has
+     *   enforced, and assumes the neighbour query and the edge lookup of the graph
+     *   agree with each other. The edge is fetched from the current vertex to the
+     *   neighbour in that order, which is what makes the search follow a directed
+     *   graph along its arcs rather than against them.
+     * - Side effects: Writes the distance and predecessor arrays. The graph is
+     *   only read.
+     *
+     * The routes are offered to neighbours that are not yet settled only. A
+     * settled neighbour cannot be improved, by the argument above, so testing it
+     * would cost a lookup and an addition to reach a comparison that can never
+     * succeed.
+     *
+     * Time complexity: O(v * (v + n) + e) with v vertices, e edges and n as the
+     * cost the representation charges for one neighbour query, plus one edge
+     * lookup and one index lookup per examined neighbour. The v * v term is the
+     * repeated search for the nearest unsettled vertex; see the class
+     * documentation for what the representations of this package make of the rest.
+     * Space complexity: O(v) for the record of settled vertices; the result arrays
+     * were allocated by the constructor.
+     *
+     * @param pGraph
+     * The graph to search, already validated by the constructor. Must not be null
+     * and must not change while this method runs.
+     */
+    private void computeShortestPaths(Graph pGraph) {
+        /*
+         * Records which distances are final. This is kept here rather than in a
+         * field because it is scaffolding of the search and meaningless
+         * afterwards: when the method returns, every reachable vertex is settled
+         * and every unsettled one is unreachable, which the distances already say.
+         */
+        boolean[] settled = new boolean[vertices.length];
+
+        /*
+         * Each round settles exactly one vertex, so at most as many rounds as
+         * there are vertices can be needed. The loop normally ends earlier,
+         * through the break below, whenever part of the graph cannot be reached.
+         */
+        for (int round = 0; round < vertices.length; round++) {
+            int nearestIndex = nearestUnsettledIndex(settled);
+
+            /*
+             * No unsettled vertex has a finite estimate any more. Everything the
+             * source can reach has been settled, and the vertices left keep the
+             * unreachable distance and the absent predecessor they started with.
+             */
+            if (nearestIndex == NO_VERTEX) {
+                break;
+            }
+
+            // The estimate of the nearest unsettled vertex cannot be undercut, so
+            // it is declared final and never reconsidered.
+            settled[nearestIndex] = true;
+
+            Vertex current = vertices[nearestIndex];
+            double distanceToCurrent = distances[nearestIndex];
+
+            SinglyLinkedList<Vertex> neighbours = pGraph.getNeighbours(current);
+            neighbours.toFirst();
+            while (neighbours.hasAccess()) {
+                Vertex neighbour = neighbours.getContent();
+                int neighbourIndex = indexOf(neighbour);
+
+                /*
+                 * A settled neighbour is already final, and a neighbour outside
+                 * the snapshot cannot be recorded at all. The latter cannot arise
+                 * from a consistent graph and is guarded against so that a
+                 * representation reporting a stray vertex causes an ignored
+                 * neighbour rather than a failure deep inside the search.
+                 */
+                if (neighbourIndex != NO_VERTEX && !settled[neighbourIndex]) {
+                    /*
+                     * Ask for the edge in the direction it is to be travelled.
+                     * Over the undirected representations the order of the two
+                     * arguments makes no difference; over the directed graph it
+                     * decides whether the arc exists at all, which is what keeps
+                     * this search on the arcs rather than against them.
+                     */
+                    Edge connection = pGraph.getEdge(current, neighbour);
+
+                    if (connection != null) {
+                        // The cost of reaching the neighbour by going through the
+                        // vertex just settled.
+                        double offeredDistance = distanceToCurrent + connection.getWeight();
+
+                        // Keep the offer only when it beats what is already known,
+                        // which for an untouched vertex is infinity and therefore
+                        // always improves.
+                        if (offeredDistance < distances[neighbourIndex]) {
+                            distances[neighbourIndex] = offeredDistance;
+                            predecessors[neighbourIndex] = current;
+                        }
+                    }
+                }
+                neighbours.next();
+            }
+        }
+    }
+
+    /**
+     * Reports the unsettled vertex with the smallest current distance estimate.
+     *
+     * Detailed explanation of:
+     * - Purpose: Chooses the vertex the search takes up next.
+     * - Business context: This choice is the algorithm's only decision, and making
+     *   it correctly is what allows a distance to be declared final. The search is
+     *   performed as a linear scan over the estimates rather than through a
+     *   priority queue, which is a deliberate choice for this library and is
+     *   discussed on the class: the priority queue of the linear package orders by
+     *   integer priority and cannot carry a floating-point distance without
+     *   rounding it, and rounding here would not merely blunt the order but settle
+     *   vertices in the wrong one.
+     * - Processing steps: Scans every vertex, ignoring those already settled and
+     *   those no route has reached, and keeps the position of the smallest
+     *   estimate seen.
+     * - Assumptions: Assumes an unreached vertex still holds the unreachable
+     *   distance, so that the comparison excludes it without a separate test.
+     * - Side effects: None; this method only reads.
+     *
+     * Time complexity: O(v) in the number of vertices, which is what makes the
+     * whole search quadratic in the vertices.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pSettled
+     * The record of which vertices already hold their final distance, indexed like
+     * the vertex snapshot. Must not be null and must have one entry per vertex.
+     *
+     * @return
+     * The position of the unsettled vertex with the smallest finite estimate, or
+     * NO_VERTEX when every remaining vertex is unreachable, which is the signal to
+     * end the search.
+     */
+    private int nearestUnsettledIndex(boolean[] pSettled) {
+        int nearestIndex = NO_VERTEX;
+        double smallestDistance = UNREACHABLE;
+
+        for (int index = 0; index < vertices.length; index++) {
+            /*
+             * The strict comparison against the smallest distance seen so far also
+             * excludes every vertex still at infinity, since no value is smaller
+             * than infinity while the running minimum is infinity itself. An
+             * unreached vertex is therefore never chosen, which is exactly the
+             * condition the search stops on.
+             */
+            if (!pSettled[index] && distances[index] < smallestDistance) {
+                smallestDistance = distances[index];
+                nearestIndex = index;
+            }
+        }
+
+        return nearestIndex;
     }
 
     /**
