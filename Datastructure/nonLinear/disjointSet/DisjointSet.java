@@ -225,4 +225,141 @@ public class DisjointSet {
         this.disjointSetCount = pSize;
     }
 
+    /**
+     * Reports whether the given identifier addresses an element of this universe.
+     *
+     * Detailed explanation of:
+     * - Purpose: Provides the single place in which the validity of an element
+     *   identifier is decided.
+     * - Business context: Element identifiers reach this structure from outside,
+     *   commonly as vertex numbers or as positions in a caller's own array, and an
+     *   identifier that has drifted out of range must never be allowed to index
+     *   the internal arrays. Concentrating the decision here keeps the public
+     *   operations free of repeated bounds arithmetic and guarantees that all of
+     *   them agree on what an element is, which matters because they report an
+     *   invalid element in different ways.
+     * - Processing steps: Compares the identifier against the two ends of the
+     *   valid range.
+     * - Assumptions: Assumes the parents array is the authority on the size of the
+     *   universe, which holds because all three arrays are allocated together and
+     *   never resized.
+     * - Side effects: None; this method only reads the array length.
+     *
+     * Time complexity: O(1); two comparisons.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @param pElement
+     * Identifier to check. Any integer is accepted, including negative values and
+     * values beyond the universe, since deciding exactly those cases is the
+     * purpose of this method.
+     *
+     * @return
+     * True when the identifier addresses an element of this universe and may
+     * therefore be used to index the internal arrays; false otherwise, which for a
+     * universe of no elements is the answer for every identifier.
+     */
+    private boolean isElement(int pElement) {
+        return pElement >= 0 && pElement < parents.length;
+    }
+
+    /**
+     * Determines which element currently represents the group containing the
+     * given element, flattening the path travelled on the way.
+     *
+     * Detailed explanation of:
+     * - Purpose: Turns an element into the single identifier shared by every
+     *   member of its group, which is what makes any two members recognisable as
+     *   belonging together.
+     * - Business context: This is the read half of the structure and the operation
+     *   every other one is built from, since a membership test compares two
+     *   representatives and a merge joins them. The representative itself carries
+     *   no meaning beyond identity: it is simply whichever member happens to sit at
+     *   the top of the tree, it may change when the group is merged into another,
+     *   and callers must therefore treat it as a label valid only until the next
+     *   merge rather than as a property of the group.
+     * - Processing steps:
+     *   1. Reject an identifier outside the universe.
+     *   2. Walk parent references upwards until reaching the element referencing
+     *      itself, which is the representative.
+     *   3. Walk the same path a second time and point every element on it directly
+     *      at that representative.
+     * - Assumptions: Assumes the parent references form a forest rather than a
+     *   cycle, which holds because the only operation writing a parent reference
+     *   attaches one representative to another and a representative referenced
+     *   itself until that moment. A cycle would make the first walk non-
+     *   terminating, so this assumption is load-bearing rather than cosmetic.
+     * - Side effects: Rewrites the parent reference of every element on the path
+     *   except the representative and the elements already pointing at it. The
+     *   partition itself is left untouched, which is why this remains a read
+     *   operation despite the writing, but it also means that even a caller doing
+     *   nothing but querying mutates the structure, with the consequences for
+     *   concurrency stated on this class.
+     *
+     * The second walk is what keeps the structure fast over a long sequence of
+     * operations. Without it, the trees built by repeated merging would be walked
+     * from the bottom again and again, and each of those walks would cost what the
+     * height of the tree costs. With it, the cost of a deep path is paid once and
+     * every element on that path is one step from its representative afterwards,
+     * so the work is not merely repeated less often but permanently removed. The
+     * flattening is performed as a separate walk rather than during the first one
+     * because the destination is not known until the first walk has finished.
+     *
+     * Time complexity: O(alpha(n)) amortised over a sequence of operations, where
+     * alpha is the inverse Ackermann function, which is at most four for any
+     * universe that fits in memory and is therefore constant for practical
+     * purposes. This bound holds only in combination with the union by rank
+     * performed by the merge: either heuristic alone leaves a logarithmic bound.
+     * A single call in isolation is O(log n) in the worst case, since it may be the
+     * one paying for a path nobody has flattened yet.
+     * Space complexity: O(1); both walks are iterative, which also removes the
+     * stack depth that the recursive formulation of this operation would need over
+     * a tall tree.
+     *
+     * @param pElement
+     * The element whose group is to be identified. Must be non-negative and less
+     * than the number of covered elements.
+     *
+     * @return
+     * The element currently representing the group containing pElement, which for
+     * an element still alone in its group is that element itself, or
+     * NO_REPRESENTATIVE when the identifier lies outside the universe, including
+     * every identifier handed to a structure covering no elements.
+     */
+    public int find(int pElement) {
+        // An identifier outside the universe belongs to no group, and answering it
+        // with a marker rather than an exception matches the tolerant read
+        // behaviour of the other structures in this library.
+        if (!isElement(pElement)) {
+            return NO_REPRESENTATIVE;
+        }
+
+        /*
+         * First walk: climb to the representative. The self-reference established
+         * at construction, and preserved by the merge for every element that keeps
+         * representing its group, is what stops this loop.
+         */
+        int representative = pElement;
+        while (parents[representative] != representative) {
+            representative = parents[representative];
+        }
+
+        /*
+         * Second walk: retrace the same path and attach every element on it
+         * directly to the representative, so that none of them will ever be walked
+         * through again. The loop stops as soon as it reaches an element already
+         * pointing at the representative, which covers both the representative
+         * itself and the elements attached during an earlier flattening.
+         */
+        int pathElement = pElement;
+        while (parents[pathElement] != representative) {
+            // The original parent must be read before it is overwritten, since it
+            // is the only remaining way to continue up the path.
+            int nextOnPath = parents[pathElement];
+            parents[pathElement] = representative;
+            pathElement = nextOnPath;
+        }
+
+        return representative;
+    }
+
 }
