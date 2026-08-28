@@ -4,6 +4,7 @@ import nonLinear.graph.base.Graph;
 import nonLinear.graph.base.Vertex;
 
 import linear.list.SinglyLinkedList;
+import linear.queue.Queue;
 
 /**
  * Purpose:
@@ -92,6 +93,29 @@ public class TopologicalSort {
     private final Vertex[] vertices;
 
     /**
+     * The vertices in the order they were placed, filled from the front.
+     *
+     * Allocated for every vertex of the graph, but only the first entries are
+     * meaningful: when a circular dependency prevents a complete ordering, the
+     * placement stops early and the remainder of this array stays empty. The
+     * boundary between the two parts is what the count below records, and reading
+     * this array without it would present a prefix of an ordering as though it
+     * were a whole one.
+     */
+    private final Vertex[] order;
+
+    /**
+     * How many vertices could be placed.
+     *
+     * Equal to the number of vertices exactly when the graph admits a complete
+     * ordering, and smaller by the number of vertices caught in or behind a circle
+     * otherwise. This single number therefore carries both the extent of the
+     * result and the diagnosis, which is why the placement returns it rather than
+     * a success flag.
+     */
+    private final int orderedCount;
+
+    /**
      * Computes a topological order of the specified graph.
      *
      * Detailed explanation of:
@@ -134,6 +158,127 @@ public class TopologicalSort {
         }
 
         this.vertices = snapshotVertices(pGraph);
+        this.order = new Vertex[vertices.length];
+
+        // Place the vertices that are free, one after another; the count reports
+        // how far that got and thereby whether the graph admits an order at all.
+        this.orderedCount = placeFreeVertices(pGraph);
+    }
+
+    /**
+     * Places the vertices one after another, always taking one that nothing
+     * outstanding leads to.
+     *
+     * Detailed explanation of:
+     * - Purpose: Produces the ordering, and reports by its length whether the
+     *   graph admits one at all.
+     * - Business context: This is the algorithm, and it follows the definition of
+     *   the problem directly. A vertex nothing points at depends on nothing and may
+     *   be placed at once; placing it discharges it as a dependency of everything
+     *   it leads to, which may in turn leave some of those vertices free. Keeping
+     *   the freed vertices in a queue and taking them one at a time therefore
+     *   builds the sequence from the front, and the only way for it to stop short
+     *   is for every remaining vertex to be waiting on another remaining vertex,
+     *   which is a circle. The procedure thus produces the order and the diagnosis
+     *   in one pass, without ever having to look for a circle explicitly.
+     * - Processing steps:
+     *   1. Count, for every vertex, how many vertices lead to it.
+     *   2. Put every vertex with a count of zero into the queue of free vertices.
+     *   3. Take a free vertex, place it, and lower the count of each of its
+     *      neighbours, adding those that reach zero to the queue.
+     *   4. Stop when no free vertex is left and report how many were placed.
+     * - Assumptions: Assumes the counts describe the graph as the neighbour query
+     *   reports it, and that the graph does not change while the placement runs.
+     * - Side effects: Fills the order array from the front.
+     *
+     * A vertex is added to the queue exactly when its count reaches zero, which is
+     * once, since the count is only ever lowered and never raised. That is what
+     * keeps every vertex in the result exactly once and makes the equality test
+     * against zero, rather than a test for zero or less, the correct one: reaching
+     * zero is an event, whereas being at zero is a state that would be observed
+     * again and again.
+     *
+     * Which of several valid orderings is produced depends on the order the queue
+     * hands the free vertices back, and thereby on the order the graph reported
+     * its vertices in. Any of them satisfies every constraint equally, and the
+     * choice among them carries no meaning; a caller needing a particular
+     * tie-breaking rule, such as alphabetical among the free vertices, needs a
+     * different collection here rather than a different algorithm.
+     *
+     * Time complexity: O(v * n + a) with v vertices, a arcs and n as the cost of
+     * one neighbour query, counting the initial pass and the placement together:
+     * each vertex is placed at most once and each connection is examined at most
+     * twice, once while counting and once while discharging.
+     * Space complexity: O(v) for the counts and the queue, both of which are
+     * discarded when this method returns.
+     *
+     * @param pGraph
+     * The graph to order. Must not be null, which the caller has already ensured.
+     *
+     * @return
+     * The number of vertices placed, which equals the number of vertices of the
+     * graph exactly when a complete ordering exists.
+     */
+    private int placeFreeVertices(Graph pGraph) {
+        /*
+         * How many vertices each vertex is still waiting for. The counts are
+         * consumed by the placement below and are meaningless afterwards, which is
+         * why they are held locally rather than as a field.
+         */
+        int[] outstanding = countIncoming(pGraph);
+
+        /*
+         * The vertices that may be placed right now. A queue is used because the
+         * order among free vertices is unconstrained and any discipline would do;
+         * a queue keeps the result close to the order the graph reported its
+         * vertices in, which makes it reproducible and easy to read.
+         */
+        Queue<Vertex> free = new Queue<>();
+
+        // Everything that depends on nothing is free from the outset. A graph
+        // without such a vertex is circular throughout and yields nothing at all.
+        for (int index = 0; index < vertices.length; index++) {
+            if (outstanding[index] == 0) {
+                free.enqueue(vertices[index]);
+            }
+        }
+
+        int placed = 0;
+
+        while (!free.isEmpty()) {
+            // Take the next free vertex; the queue separates reading from
+            // removing, so both steps are needed here.
+            Vertex current = free.front();
+            free.dequeue();
+
+            order[placed] = current;
+            placed = placed + 1;
+
+            /*
+             * Placing this vertex discharges it as a dependency of everything it
+             * leads to. Over a directed graph those are its successors; over an
+             * undirected one they are all of its neighbours, which is why an
+             * undirected edge makes both of its endpoints wait for each other.
+             */
+            SinglyLinkedList<Vertex> neighbours = pGraph.getNeighbours(current);
+            neighbours.toFirst();
+            while (neighbours.hasAccess()) {
+                int neighbourIndex = indexOf(neighbours.getContent());
+
+                if (neighbourIndex != NO_VERTEX) {
+                    outstanding[neighbourIndex] = outstanding[neighbourIndex] - 1;
+
+                    // Reaching zero is the moment a vertex becomes free, and it
+                    // happens exactly once per vertex.
+                    if (outstanding[neighbourIndex] == 0) {
+                        free.enqueue(vertices[neighbourIndex]);
+                    }
+                }
+                neighbours.next();
+            }
+        }
+
+        return placed;
     }
 
     /**
