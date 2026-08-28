@@ -71,6 +71,35 @@ import linear.queue.Queue;
  * shortest-path algorithms report how cheaply, this one reports in which order
  * things may be done, which is the question a directed graph is most often built
  * to answer outside of navigation.
+ *
+ * Complexity summary, with v as the number of vertices, a as the number of arcs
+ * and n as the cost the underlying representation charges for one neighbour
+ * query:
+ * - construction, which performs the whole computation: O(v * n + a * v); each
+ *   vertex is asked for its neighbours twice, once while counting and once while
+ *   discharging, and each reported neighbour costs a lookup of its position in
+ *   the snapshot
+ * - hasCycle: O(1)
+ * - getOrder: O(v), one append per vertex
+ * - getUnorderedVertices: O(1) when the graph could be ordered, O(v * v) when it
+ *   could not, that being a diagnostic path taken only after a failure
+ * - overall space: O(v); the snapshot, the order, and the counts and queue that
+ *   the placement discards when it finishes
+ *
+ * The bound this algorithm is usually quoted with, O(v + e), assumes both a
+ * representation that hands back the neighbours of a vertex in time proportional
+ * to their number and a constant-time way of turning a vertex into an index. This
+ * library provides neither: the list-based representations examine their whole
+ * edge collection per neighbour query and the snapshot is searched linearly, so a
+ * run costs O(v * e + a * v) over them and O(v * v + a * v) over the adjacency
+ * matrix. The algorithm itself remains linear in the graph; what is quadratic
+ * here is the access to it.
+ *
+ * The placement visits each vertex once and each connection twice regardless of
+ * the shape of the graph, so there is no worst case to speak of and no early
+ * exit to hope for. A circular dependency does not make the work longer, it
+ * merely makes it stop sooner, since the vertices caught in the circle are never
+ * placed and never have their neighbours discharged.
  */
 public class TopologicalSort {
 

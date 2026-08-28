@@ -59,7 +59,7 @@ The goal of this project is to:
 - [x] Dijkstra’s Shortest Path Algorithm   
 - [x] Floyd-Warshall Algorithm  
 - [x] Bellman-Ford Algorithm   
-- [ ] Topological Sorting  
+- [x] Topological Sorting  
 - [ ] Minimum Spanning Tree (Kruskal / Prim)
 
 ---
