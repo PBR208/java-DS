@@ -434,4 +434,162 @@ public class TopologicalSort {
         return NO_VERTEX;
     }
 
+    /**
+     * Reports whether the graph contains a circular dependency.
+     *
+     * Detailed explanation of:
+     * - Purpose: States whether an ordering exists at all.
+     * - Business context: This is the check a caller makes before doing anything
+     *   with the order, and for many callers it is the point of running the
+     *   algorithm: a build system asking whether its targets can be built in any
+     *   order at all, a schedule asking whether its constraints are satisfiable, a
+     *   package manager asking whether a dependency has come round on itself. The
+     *   answer is derived from the count of placed vertices rather than from a
+     *   separate search, because a vertex is placed exactly when nothing
+     *   outstanding leads to it, and vertices left over at the end can only be
+     *   waiting on one another.
+     * - Processing steps: Compares the number of placed vertices against the number
+     *   of vertices in the graph.
+     * - Assumptions: None beyond the placement having run, which the constructor
+     *   guarantees.
+     * - Side effects: None.
+     *
+     * An undirected graph holding any edge reports a cycle here, and truthfully
+     * so: an undirected edge is a mutual dependency, which is a circle of length
+     * two. A caller passing an undirected graph and expecting an ordering has
+     * asked a question that has no answer, rather than met a limitation of this
+     * class.
+     *
+     * Time complexity: O(1); both numbers are held as fields.
+     * Space complexity: O(1).
+     *
+     * @return
+     * True when at least one vertex could not be placed and no complete ordering
+     * exists; false when every vertex was placed, in which case the reported order
+     * covers the whole graph. An empty graph reports false, there being no
+     * constraint it fails to satisfy.
+     */
+    public boolean hasCycle() {
+        return orderedCount != vertices.length;
+    }
+
+    /**
+     * Reports the vertices in an order that respects every connection.
+     *
+     * Detailed explanation of:
+     * - Purpose: Hands over the sequence the algorithm produced.
+     * - Business context: This is the result the class exists for, and it is meant
+     *   to be consumed in sequence: processing the vertices in this order
+     *   guarantees that whatever a vertex leads to comes after it, which is exactly
+     *   what a build, an installation or a schedule needs. The order is one of
+     *   possibly many valid ones and carries no further meaning: two vertices
+     *   unrelated by any chain of connections may appear in either order here, and
+     *   a caller must not read their positions as a statement that one must
+     *   precede the other.
+     * - Processing steps: Copies the placed vertices into a fresh list, unless the
+     *   placement was incomplete, in which case an empty list is reported.
+     * - Assumptions: Assumes the placement filled the order array from the front,
+     *   which it does.
+     * - Side effects: None; a new list is allocated per call.
+     *
+     * A graph with a circular dependency is answered with an empty list rather
+     * than with the vertices that could still be placed. The prefix would look
+     * exactly like a complete ordering and would very likely be acted upon as one,
+     * which is a worse failure than being given nothing; a caller wanting to know
+     * what stood in the way asks for the unordered vertices instead.
+     *
+     * Time complexity: O(v) in the number of vertices; one append per placed
+     * vertex.
+     * Space complexity: O(v) for the returned list, which holds references to the
+     * graph's own vertex instances.
+     *
+     * @return
+     * A new list holding every vertex of the graph in a valid order, positioned at
+     * its first element. Empty when the graph contains a circular dependency, and
+     * equally empty for a graph without vertices; the two are distinguished by
+     * asking whether a cycle was found. Never null.
+     */
+    public SinglyLinkedList<Vertex> getOrder() {
+        SinglyLinkedList<Vertex> result = new SinglyLinkedList<>();
+
+        // Without a complete ordering there is nothing to hand over, since a
+        // partial one cannot be recognised as partial by the caller.
+        if (hasCycle()) {
+            return result;
+        }
+
+        for (int position = 0; position < orderedCount; position++) {
+            result.append(order[position]);
+        }
+
+        result.toFirst();
+        return result;
+    }
+
+    /**
+     * Reports the vertices that could not be placed.
+     *
+     * Detailed explanation of:
+     * - Purpose: Names the vertices caught in a circular dependency or waiting
+     *   behind one.
+     * - Business context: Knowing that a graph cannot be ordered is rarely enough;
+     *   the caller has to repair it, and for that it needs to know where to look.
+     *   These are the vertices whose dependencies never all cleared, which is the
+     *   circle itself together with everything downstream of it. That is a wider
+     *   set than the circle alone, and deliberately so: a vertex behind a circle is
+     *   just as unschedulable as one in it, and narrowing the report to the circle
+     *   would require a second search for information the caller can obtain by
+     *   following the graph from any of these vertices.
+     * - Processing steps: Marks every placed vertex and collects the vertices of
+     *   the snapshot that were not marked, in the order the graph reported them.
+     * - Assumptions: Assumes vertices are compared by identity, so that the
+     *   placed vertices can be located in the snapshot.
+     * - Side effects: None; a new list is allocated per call.
+     *
+     * Time complexity: O(1) when the graph could be ordered completely, which is
+     * recognised before anything is examined; O(v * v) otherwise, one lookup in the
+     * snapshot per placed vertex. The quadratic case is a diagnostic path taken
+     * only when the ordering has already failed.
+     * Space complexity: O(v) for the marks and the returned list.
+     *
+     * @return
+     * A new list holding every vertex that could not be placed, in the order the
+     * graph reported its vertices, positioned at its first element. Empty exactly
+     * when the graph admits a complete ordering. Never null.
+     */
+    public SinglyLinkedList<Vertex> getUnorderedVertices() {
+        SinglyLinkedList<Vertex> result = new SinglyLinkedList<>();
+
+        // Everything was placed, so nothing was left over; recognising this here
+        // keeps the ordinary case free of the marking below.
+        if (!hasCycle()) {
+            return result;
+        }
+
+        /*
+         * Mark what was placed. The placement recorded the vertices themselves
+         * rather than their positions, so each one is located in the snapshot
+         * again; this runs only when an ordering has already failed.
+         */
+        boolean[] placed = new boolean[vertices.length];
+        for (int position = 0; position < orderedCount; position++) {
+            int index = indexOf(order[position]);
+
+            if (index != NO_VERTEX) {
+                placed[index] = true;
+            }
+        }
+
+        // Whatever remains never became free, which means it is waiting, directly
+        // or at a distance, on a vertex that is waiting on it.
+        for (int index = 0; index < vertices.length; index++) {
+            if (!placed[index]) {
+                result.append(vertices[index]);
+            }
+        }
+
+        result.toFirst();
+        return result;
+    }
+
 }
