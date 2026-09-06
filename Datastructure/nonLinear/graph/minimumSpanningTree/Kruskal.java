@@ -604,4 +604,112 @@ public class Kruskal {
         return accepted;
     }
 
+    /**
+     * Reports whether the accepted edges form a single tree spanning every
+     * vertex of the graph.
+     *
+     * Detailed explanation of:
+     * - Purpose: States whether the graph was connected, as measured by the
+     *   result of this computation.
+     * - Business context: A caller building a network from the accepted edges
+     *   usually needs to know whether that network reaches everywhere before
+     *   doing anything with it, since a forest of several trees leaves some
+     *   vertices unable to reach others no matter which accepted edges are
+     *   followed. The answer is derived from the count of accepted edges
+     *   rather than from a separate connectivity check, because a tree
+     *   spanning v vertices always has exactly v - 1 edges and a forest can
+     *   only fall short of that count, never exceed it.
+     * - Processing steps: Compares the number of accepted edges against one
+     *   fewer than the number of vertices.
+     * - Assumptions: None beyond the selection having already run, which the
+     *   constructor guarantees.
+     * - Side effects: None.
+     *
+     * Time complexity: O(1); both numbers are held as fields.
+     * Space complexity: O(1).
+     *
+     * @return
+     * True when the accepted edges connect every vertex of the graph in one
+     * tree; false when the graph fell into more than one component and the
+     * result is a forest of several trees instead. A graph of zero or one
+     * vertex reports true, there being nothing left to connect.
+     */
+    public boolean isSpanningTree() {
+        return includedEdgeCount == treeEdges.length;
+    }
+
+    /**
+     * Reports the edges accepted into the minimum spanning forest.
+     *
+     * Detailed explanation of:
+     * - Purpose: Hands over the result the algorithm exists to produce.
+     * - Business context: These are the edges a caller keeps and every other
+     *   edge of the original graph discards, whether building a cheaper
+     *   physical network from them or merely reading off their total cost.
+     *   The edges are returned in the order they were accepted, which is
+     *   ascending order of weight; two edges of equal weight keep the
+     *   relative order the sort left them in.
+     * - Processing steps: Copies the accepted edges into a fresh list.
+     * - Assumptions: Assumes the selection filled treeEdges from the front,
+     *   which it does.
+     * - Side effects: None; a new list is allocated per call.
+     *
+     * Time complexity: O(k) for the k accepted edges; one append per edge.
+     * Space complexity: O(k) for the returned list, which holds references to
+     * the graph's own edge instances.
+     *
+     * @return
+     * A new list holding every accepted edge, in the order it was accepted,
+     * positioned at its first element. Holds one fewer edge than there are
+     * vertices when the graph is connected, and fewer still, by one per
+     * additional component, otherwise. Empty only for a graph of at most one
+     * vertex. Never null.
+     */
+    public SinglyLinkedList<Edge> getEdges() {
+        SinglyLinkedList<Edge> result = new SinglyLinkedList<>();
+
+        for (int index = 0; index < includedEdgeCount; index++) {
+            result.append(treeEdges[index]);
+        }
+
+        result.toFirst();
+        return result;
+    }
+
+    /**
+     * Reports the total weight of the accepted edges.
+     *
+     * Detailed explanation of:
+     * - Purpose: Answers the question the algorithm was run for: the cost of
+     *   the cheapest structure connecting whatever the graph allows to be
+     *   connected.
+     * - Business context: This is the number a caller compares against
+     *   alternative layouts or budgets against a cost limit. It is computed
+     *   on request rather than accumulated during selection, since most
+     *   callers ask for it once, which makes a single pass over the accepted
+     *   edges cheaper overall than carrying an extra field through a
+     *   computation that runs only once regardless.
+     * - Processing steps: Sums the weight of every accepted edge.
+     * - Assumptions: None beyond the selection having already run.
+     * - Side effects: None.
+     *
+     * Time complexity: O(k) for the k accepted edges; one addition per edge.
+     * Space complexity: O(1); nothing is allocated.
+     *
+     * @return
+     * The sum of the weights of every accepted edge, which is zero for a
+     * graph of at most one vertex, there being no edge to need. Negative when
+     * accepted edges of negative weight outweigh the positive ones, which is
+     * a legitimate answer rather than an error.
+     */
+    public double getTotalWeight() {
+        double sum = 0.0;
+
+        for (int index = 0; index < includedEdgeCount; index++) {
+            sum = sum + treeEdges[index].getWeight();
+        }
+
+        return sum;
+    }
+
 }
