@@ -41,7 +41,7 @@ The goal of this project is to:
 - [x] AVL Tree  
 - [x] Red-Black Tree  
 - [x] Heap (Min/Max Heap)  
-- [ ] Trie (Prefix Tree)  
+- [x] Trie (Prefix Tree)  
 - [x] Segment Tree  
 - [x] Fenwick Tree (Binary Indexed Tree)  
 - [x] Disjoint Set (Union-Find)
