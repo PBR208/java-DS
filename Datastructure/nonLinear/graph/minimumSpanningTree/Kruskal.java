@@ -1,5 +1,6 @@
 package nonLinear.graph.minimumSpanningTree;
 
+import nonLinear.disjointSet.DisjointSet;
 import nonLinear.graph.base.Edge;
 import nonLinear.graph.base.Graph;
 import nonLinear.graph.base.Vertex;
@@ -105,6 +106,27 @@ public class Kruskal {
     private final Vertex[] vertices;
 
     /**
+     * The edges accepted into the spanning forest, filled from the front.
+     *
+     * Allocated to hold at most one fewer edge than there are vertices, which
+     * is the most a forest spanning them can ever need; only the first
+     * entries, up to the count below, are meaningful, the remainder staying
+     * null when the graph falls into more than one connected part.
+     */
+    private final Edge[] treeEdges;
+
+    /**
+     * How many edges were accepted into the spanning forest.
+     *
+     * Equal to one fewer than the number of vertices exactly when the graph is
+     * connected and the forest is therefore a single spanning tree, and
+     * smaller by one per additional component otherwise. This single number
+     * carries both the extent of the result and the diagnosis, which is why
+     * the construction returns it rather than a success flag.
+     */
+    private final int includedEdgeCount;
+
+    /**
      * Builds the minimum spanning forest of the specified graph.
      *
      * Detailed explanation of:
@@ -114,20 +136,36 @@ public class Kruskal {
      * - Business context: The computation is performed here rather than in a
      *   method that must be called first, matching the algorithms of the
      *   neighbouring packages, so that a caller can never read a partially
-     *   assembled forest.
+     *   assembled forest. A partial result would be particularly misleading
+     *   here, since a prefix of the accepted edges is itself a valid, merely
+     *   smaller, spanning forest, and only the count of accepted edges reveals
+     *   that more remain undecided.
      * - Processing steps:
      *   1. Reject a null graph.
      *   2. Snapshot the vertices, which fixes the index space the union-find
-     *      bookkeeping is addressed by.
+     *      bookkeeping is addressed by, and allocate room for at most one
+     *      fewer accepted edge than there are vertices.
+     *   3. Collect every edge of the graph and sort the collected copy by
+     *      weight, ascending.
+     *   4. Walk the sorted edges once, accepting each that connects two
+     *      vertices not yet joined by an accepted edge, until either every
+     *      edge has been considered or a complete spanning tree has been
+     *      assembled.
      * - Assumptions: Assumes the graph does not change while the constructor
      *   runs.
-     * - Side effects: Allocates the vertex snapshot. The graph is read but
-     *   neither modified nor retained.
+     * - Side effects: Allocates the vertex snapshot, the accepted-edges array,
+     *   and a working copy of every edge that is discarded once construction
+     *   finishes. The graph is read but neither modified nor retained, and its
+     *   vertex and edge marks are left untouched, since this algorithm keeps
+     *   its bookkeeping in a DisjointSet of its own rather than in the marks a
+     *   traversal would use.
      *
-     * Time complexity: O(v) in the number of vertices for the snapshot alone;
-     * the sort and the selection that follow dominate and are documented on the
-     * class.
-     * Space complexity: O(v) for the snapshot.
+     * Time complexity: O(v + e) for the validation, the snapshot and the
+     * collection of the edges alone, with v vertices and e edges; the sort and
+     * the selection that follow dominate and are documented on the class.
+     * Space complexity: O(v + e); the vertex snapshot and the accepted-edges
+     * array are O(v), and the working copy of every edge, needed only for the
+     * duration of construction, is O(e).
      *
      * @param pGraph
      * The graph to span. Must not be null. May be empty, may consist of several
@@ -147,6 +185,15 @@ public class Kruskal {
         }
 
         this.vertices = snapshotVertices(pGraph);
+        this.treeEdges = new Edge[vertices.length == 0 ? 0 : vertices.length - 1];
+
+        // A private, sortable copy of the graph's edges; sorting the graph's
+        // own collection in place would leave it in an order that has nothing
+        // to do with however it was built.
+        Edge[] candidateEdges = snapshotEdges(pGraph);
+        sortByWeight(candidateEdges);
+
+        this.includedEdgeCount = buildSpanningForest(candidateEdges);
     }
 
     /**
@@ -476,6 +523,85 @@ public class Kruskal {
         for (int index = pFrom; index < pTo; index++) {
             pEdges[index] = pBuffer[index];
         }
+    }
+
+    /**
+     * Selects the edges of the minimum spanning forest from the specified,
+     * already-sorted edges.
+     *
+     * Detailed explanation of:
+     * - Purpose: Performs the greedy selection the whole class exists to carry
+     *   out, filling treeEdges and reporting how many of its entries were
+     *   used.
+     * - Business context: This is the algorithm itself. Considering the edges
+     *   from cheapest to costliest and accepting an edge exactly when its two
+     *   endpoints do not already share a component is what keeps every
+     *   accepted edge as cheap as it can possibly be without ever closing a
+     *   cycle: the cheapest edge crossing the boundary between any two
+     *   components is always safe to accept, because no cheaper edge could
+     *   connect them, and this scan happens to reach that edge before any
+     *   costlier alternative. Once two vertices share a component, any
+     *   further edge between them, direct or indirect, would only close a
+     *   cycle and is correctly rejected regardless of how cheap it is.
+     * - Processing steps:
+     *   1. Start every vertex in a component of its own.
+     *   2. Consider the sorted edges from cheapest to costliest.
+     *   3. Accept an edge, recording it and merging the components of its two
+     *      endpoints, exactly when those components currently differ.
+     *   4. Stop considering further edges as soon as one fewer edge than
+     *      there are vertices has been accepted, since no forest spanning
+     *      them can ever need more.
+     * - Assumptions: Assumes pSortedEdges is already ordered by weight,
+     *   ascending, which the constructor guarantees by sorting it beforehand.
+     * - Side effects: Fills treeEdges from the front. Allocates one
+     *   DisjointSet sized to the vertex snapshot, discarded once this method
+     *   returns.
+     *
+     * An edge referencing a vertex outside the snapshot is skipped rather than
+     * allowed to fail the union-find lookup on an invalid index; this can only
+     * arise from a graph inconsistent with its own vertex collection, and the
+     * representations of this package do not produce one.
+     *
+     * Time complexity: O(e * v) with e the number of edges examined and v the
+     * number of vertices, dominated by the two index lookups performed per
+     * edge; the union-find operations themselves cost only O(alpha(v))
+     * amortised each.
+     * Space complexity: O(v) for the DisjointSet allocated here; treeEdges was
+     * already allocated by the constructor.
+     *
+     * @param pSortedEdges
+     * The edges to select from, ordered by weight, ascending. Must not be
+     * null, which the caller has already ensured.
+     *
+     * @return
+     * The number of edges accepted into treeEdges, which is one fewer than
+     * the number of vertices exactly when the graph is connected, and smaller
+     * by one per additional component otherwise.
+     */
+    private int buildSpanningForest(Edge[] pSortedEdges) {
+        DisjointSet components = new DisjointSet(vertices.length);
+        int accepted = 0;
+
+        for (int index = 0; index < pSortedEdges.length && accepted < treeEdges.length; index++) {
+            Edge candidate = pSortedEdges[index];
+            Vertex[] endpoints = candidate.getVertices();
+
+            int firstIndex = indexOf(endpoints[0]);
+            int secondIndex = indexOf(endpoints[1]);
+
+            /*
+             * Accepting the edge and merging its two components happens in one
+             * step: union already reports whether the two components differed,
+             * which is exactly the cycle test the selection needs, so no
+             * separate connectivity check is made beforehand.
+             */
+            if (firstIndex != NO_VERTEX && secondIndex != NO_VERTEX && components.union(firstIndex, secondIndex)) {
+                treeEdges[accepted] = candidate;
+                accepted = accepted + 1;
+            }
+        }
+
+        return accepted;
     }
 
 }
