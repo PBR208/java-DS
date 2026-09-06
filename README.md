@@ -60,7 +60,7 @@ The goal of this project is to:
 - [x] Floyd-Warshall Algorithm  
 - [x] Bellman-Ford Algorithm   
 - [x] Topological Sorting  
-- [ ] Minimum Spanning Tree (Kruskal / Prim)
+- [x] Minimum Spanning Tree (Kruskal / Prim)
 
 ---
 
