@@ -84,6 +84,40 @@ import linear.list.SinglyLinkedList;
  * make everything reachable from everything else at once. It is also the
  * intended consumer of DisjointSet, which names Kruskal's algorithm among its own
  * reasons for existing.
+ *
+ * Complexity summary, with v as the number of vertices and e as the number of
+ * edges:
+ * - construction, which performs the whole computation: O(v + e log e + e * v);
+ *   the middle term is the sort and the last is the cost of translating both
+ *   endpoints of every edge into an index, this library holding no faster way
+ *   to do so
+ * - isSpanningTree: O(1)
+ * - getEdges: O(k) for the k accepted edges, one append per edge
+ * - getTotalWeight: O(k) for the k accepted edges, one addition per edge
+ * - overall space: O(v + e); the vertex snapshot and the accepted edges are
+ *   O(v), and the collected and sorted copy of every edge, needed only during
+ *   construction, is O(e)
+ *
+ * The bound this algorithm is usually quoted with, O(e log e), assumes a
+ * constant-time way of turning a vertex into the index the union-find structure
+ * addresses it by. This library provides none, so every edge pays for two
+ * linear scans of the vertex snapshot on top of the sort, which is why the
+ * e * v term dominates the sort itself on any graph where the vertices well
+ * outnumber the logarithm of the edges. The sort is nonetheless kept as a real
+ * merge sort rather than a scan repeated once per accepted edge, since the
+ * latter would turn a graph with few components, and therefore few accepted
+ * edges, into no saving at all: every edge would still have to be reconsidered
+ * from scratch on every round.
+ *
+ * The number of accepted edges never exceeds v - 1, one fewer than the number
+ * of vertices, because a tree connecting v vertices has exactly that many
+ * edges and a forest never needs more without closing a cycle somewhere. That
+ * bound is reached exactly when the graph is connected, which is also the
+ * condition isSpanningTree reports; a graph falling into several components
+ * is spanned by strictly fewer edges, one fewer per component than the
+ * component has vertices, and the edges beyond the last one accepted are
+ * rejected for the rest of the run without their weight ever being large
+ * enough to matter.
  */
 public class Kruskal {
 
